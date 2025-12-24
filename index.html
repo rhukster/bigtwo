@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Big Two - Chinese Poker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    --felt: #0d4a2a;
+    --felt-dark: #093d23;
+    --felt-light: #127a42;
+    --gold: #d4af37;
+    --gold-light: #f4cf67;
+    --gold-dark: #a68928;
+    --wood: #5c3a21;
+    --wood-dark: #3d2615;
+    --card-white: #f8f6f0;
+    --red: #c41e3a;
+    --black: #1a1a1a;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--wood-dark);
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+/* Wood frame border */
+.table-frame {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    padding: 12px;
+    background: 
+        linear-gradient(135deg, #6b4423 0%, #4a2f17 50%, #5c3a21 100%);
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.5);
+}
+
+/* Felt table surface */
+.game-container {
+    width: 100%;
+    height: 100%;
+    background: 
+        radial-gradient(ellipse at center, var(--felt-light) 0%, var(--felt) 40%, var(--felt-dark) 100%);
+    border-radius: 20px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 
+        inset 0 0 100px rgba(0,0,0,0.3),
+        inset 0 0 50px rgba(0,0,0,0.2),
+        0 0 20px rgba(0,0,0,0.5);
+}
+
+/* Felt texture overlay */
+.game-container::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    pointer-events: none;
+}
+
+/* Ambient light effect */
+.game-container::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120%;
+    height: 100%;
+    background: radial-gradient(ellipse at center top, rgba(255,255,200,0.08) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+/* Header */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 30px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, transparent 100%);
+    position: relative;
+    z-index: 10;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.logo-icon {
+    font-size: 2rem;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.logo h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--gold);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5), 0 0 30px rgba(212,175,55,0.3);
+    letter-spacing: 2px;
+}
+
+.controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.control-group label {
+    color: rgba(255,255,255,0.7);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.control-group select {
+    padding: 8px 30px 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--gold-dark);
+    background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.8) 100%);
+    color: var(--gold-light);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23d4af37' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+
+.btn {
+    padding: 10px 24px;
+    border-radius: 6px;
+    border: none;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.btn-primary {
+    background: linear-gradient(180deg, var(--gold) 0%, var(--gold-dark) 100%);
+    color: #1a1a1a;
+    box-shadow: 0 4px 15px rgba(212,175,55,0.3), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(212,175,55,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+
+.btn-secondary {
+    background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%);
+}
+
+/* Game area */
+.game-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px 30px 20px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Opponents area */
+.opponents-area {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    padding: 10px 0 20px;
+    min-height: 140px;
+}
+
+.opponent {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    transition: opacity 0.3s ease;
+}
+
+.opponent.inactive { opacity: 0; pointer-events: none; position: absolute; }
+
+.avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    border: 2px solid rgba(255,255,255,0.2);
+    position: relative;
+}
+
+.opponent:nth-child(2) .avatar { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+.opponent:nth-child(3) .avatar { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+
+.avatar.current-turn::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid var(--gold);
+    animation: pulse-ring 1.5s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.3); opacity: 0; }
+}
+
+.opponent-info {
+    text-align: center;
+}
+
+.opponent-name {
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.opponent-cards-count {
+    color: rgba(255,255,255,0.6);
+    font-size: 0.8rem;
+    margin-top: 2px;
+}
+
+.opponent-hand {
+    display: flex;
+    justify-content: center;
+}
+
+.card-back {
+    width: 40px;
+    height: 56px;
+    background: 
+        linear-gradient(135deg, #8b0000 0%, #5c0000 50%, #8b0000 100%);
+    border-radius: 5px;
+    border: 2px solid #fff;
+    margin: 0 -15px;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.4);
+    position: relative;
+    overflow: hidden;
+}
+
+.card-back::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 3px;
+    background: 
+        repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 3px,
+            rgba(255,255,255,0.05) 3px,
+            rgba(255,255,255,0.05) 6px
+        );
+}
+
+.card-back::after {
+    content: '♠';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.2rem;
+    color: rgba(255,215,0,0.4);
+}
+
+/* Center play area */
+.center-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.play-zone {
+    width: 450px;
+    height: 180px;
+    background: rgba(0,0,0,0.15);
+    border-radius: 100px;
+    border: 2px dashed rgba(255,255,255,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: visible;
+}
+
+.play-zone-label {
+    position: absolute;
+    top: 12px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.3);
+}
+
+.played-cards-stack {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100px;
+    min-width: 300px;
+}
+
+.play-group {
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.play-group.old {
+    opacity: 0.5;
+    filter: brightness(0.7);
+}
+
+.play-group .card {
+    width: 55px;
+    height: 77px;
+    margin: 0 -4px;
+    cursor: default;
+}
+
+.play-group .card:hover {
+    transform: none;
+    box-shadow: 
+        2px 4px 10px rgba(0,0,0,0.3),
+        0 0 0 1px rgba(0,0,0,0.1);
+}
+
+.play-group .card .card-rank { font-size: 0.95rem; }
+.play-group .card .card-suit-small { font-size: 0.8rem; }
+.play-group .card .card-center { font-size: 1.6rem; }
+
+.played-cards {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    min-height: 91px;
+    align-items: center;
+}
+
+.hand-type-label {
+    position: absolute;
+    bottom: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gold);
+    text-shadow: 0 0 10px rgba(212,175,55,0.5);
+}
+
+.trick-counter {
+    position: absolute;
+    top: 12px;
+    right: 20px;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.game-message {
+    margin-top: 20px;
+    padding: 12px 30px;
+    background: rgba(0,0,0,0.4);
+    border-radius: 30px;
+    color: white;
+    font-size: 1rem;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.1);
+    min-width: 300px;
+}
+
+/* Player area */
+.player-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    padding: 15px 0;
+    background: linear-gradient(0deg, rgba(0,0,0,0.3) 0%, transparent 100%);
+    margin: 0 -30px;
+    padding-left: 30px;
+    padding-right: 30px;
+}
+
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.player-avatar {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    border: 2px solid rgba(255,255,255,0.3);
+    position: relative;
+}
+
+.player-avatar.current-turn::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid var(--gold);
+    animation: pulse-ring 1.5s ease-out infinite;
+}
+
+.player-name {
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.player-hand {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    max-width: 95vw;
+    min-height: 100px;
+    padding: 10px 0;
+}
+
+/* Cards */
+.card {
+    width: 65px;
+    height: 91px;
+    background: var(--card-white);
+    border-radius: 8px;
+    box-shadow: 
+        2px 4px 10px rgba(0,0,0,0.3),
+        0 0 0 1px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    user-select: none;
+    margin: 0 -8px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.card:hover {
+    transform: translateY(-12px) scale(1.02);
+    z-index: 10;
+    box-shadow: 
+        4px 8px 20px rgba(0,0,0,0.4),
+        0 0 0 1px rgba(0,0,0,0.1);
+}
+
+.card.selected {
+    transform: translateY(-25px) scale(1.05);
+    box-shadow: 
+        0 15px 30px rgba(212,175,55,0.4),
+        0 0 0 2px var(--gold),
+        0 0 20px rgba(212,175,55,0.3);
+    z-index: 20;
+}
+
+.card.played {
+    animation: playCard 0.4s ease-out;
+}
+
+@keyframes playCard {
+    0% { transform: translateY(100px) scale(0.5); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.card-corner {
+    padding: 4px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+}
+
+.card-corner-top { align-self: flex-start; }
+.card-corner-bottom { 
+    align-self: flex-end; 
+    transform: rotate(180deg);
+    margin-top: auto;
+}
+
+.card-rank {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.card-suit-small {
+    font-size: 0.9rem;
+    margin-top: -2px;
+}
+
+.card-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2rem;
+}
+
+.card.red { color: var(--red); }
+.card.black { color: var(--black); }
+
+/* Action buttons */
+.player-actions {
+    display: flex;
+    gap: 15px;
+}
+
+.btn-play {
+    background: linear-gradient(180deg, #4CAF50 0%, #2e7d32 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(76,175,80,0.3);
+}
+
+.btn-play:hover:not(:disabled) {
+    background: linear-gradient(180deg, #66bb6a 0%, #4CAF50 100%);
+    transform: translateY(-1px);
+}
+
+.btn-pass {
+    background: linear-gradient(180deg, #ef5350 0%, #c62828 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(239,83,80,0.3);
+}
+
+.btn-pass:hover:not(:disabled) {
+    background: linear-gradient(180deg, #ff7043 0%, #ef5350 100%);
+    transform: translateY(-1px);
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+/* Winner overlay */
+.overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.9);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.winner-content {
+    text-align: center;
+    animation: winner-appear 0.5s ease-out;
+}
+
+@keyframes winner-appear {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.winner-trophy {
+    font-size: 5rem;
+    margin-bottom: 20px;
+    animation: trophy-bounce 1s ease-in-out infinite;
+}
+
+@keyframes trophy-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-15px); }
+}
+
+.winner-text {
+    font-family: 'Cinzel', serif;
+    font-size: 3rem;
+    color: var(--gold);
+    text-shadow: 0 0 30px rgba(212,175,55,0.5);
+    margin-bottom: 40px;
+}
+
+/* Rules modal */
+.rules-modal {
+    background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
+    border-radius: 16px;
+    max-width: 550px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.5);
+    border: 1px solid rgba(212,175,55,0.3);
+}
+
+.rules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 25px;
+    border-bottom: 1px solid rgba(212,175,55,0.2);
+    background: rgba(212,175,55,0.05);
+}
+
+.rules-header h2 {
+    font-family: 'Cinzel', serif;
+    color: var(--gold);
+    font-size: 1.4rem;
+}
+
+.rules-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    font-size: 1.8rem;
+    cursor: pointer;
+    transition: color 0.2s;
+    line-height: 1;
+}
+
+.rules-close:hover { color: white; }
+
+.rules-content {
+    padding: 25px;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.7;
+}
+
+.rules-content section { margin-bottom: 25px; }
+.rules-content section:last-child { margin-bottom: 0; }
+
+.rules-content h3 {
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 1rem;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(212,175,55,0.2);
+}
+
+.rules-content p { margin: 8px 0; font-size: 0.95rem; }
+.rules-content em { color: var(--gold); font-style: normal; font-weight: 600; }
+.rules-content strong { color: white; }
+
+.rules-content ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.rules-content li { margin: 8px 0; font-size: 0.95rem; }
+
+.rules-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.rules-table tr { border-bottom: 1px solid rgba(255,255,255,0.1); }
+.rules-table tr:last-child { border-bottom: none; }
+.rules-table td { padding: 10px 12px; vertical-align: top; }
+.rules-table td:first-child { width: 130px; color: var(--gold); font-weight: 500; }
+
+/* Confetti */
+.confetti {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    top: -10px;
+    animation: confetti-fall linear forwards;
+    z-index: 1001;
+}
+
+@keyframes confetti-fall {
+    to {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+/* Sound toggle */
+.sound-toggle {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.7);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sound-toggle:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+}
+
+.sound-toggle.muted { opacity: 0.4; }
+
+/* Footer */
+.footer {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+}
+
+.footer a {
+    color: rgba(255,255,255,0.4);
+    text-decoration: none;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s;
+}
+
+.footer a:hover {
+    color: rgba(255,255,255,0.7);
+}
+
+.footer svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .table-frame {
+        padding: 6px;
+    }
+
+    .header {
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px 15px;
+    }
+
+    .logo h1 {
+        font-size: 1.2rem;
+    }
+
+    .controls {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .control-group label {
+        font-size: 0.7rem;
+    }
+
+    .control-group select {
+        padding: 6px 24px 6px 8px;
+        font-size: 0.8rem;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        font-size: 0.75rem;
+    }
+
+    .game-area {
+        padding: 5px 10px 10px;
+    }
+
+    .opponents-area {
+        gap: 20px;
+        padding: 5px 0 10px;
+        min-height: 100px;
+    }
+
+    .avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 1.1rem;
+    }
+
+    .opponent-name {
+        font-size: 0.8rem;
+    }
+
+    .opponent-cards-count {
+        font-size: 0.7rem;
+    }
+
+    .card-back {
+        width: 28px;
+        height: 40px;
+        margin: 0 -10px;
+        border-radius: 3px;
+    }
+
+    .card-back::after {
+        font-size: 0.8rem;
+    }
+
+    .play-zone {
+        width: 90%;
+        max-width: 350px;
+        height: 130px;
+        border-radius: 60px;
+    }
+
+    .play-zone-label {
+        font-size: 0.65rem;
+        top: 8px;
+    }
+
+    .trick-counter {
+        font-size: 0.65rem;
+        top: 8px;
+        right: 15px;
+    }
+
+    .play-group .card {
+        width: 42px;
+        height: 59px;
+        margin: 0 -3px;
+    }
+
+    .play-group .card .card-rank { font-size: 0.75rem; }
+    .play-group .card .card-suit-small { font-size: 0.65rem; }
+    .play-group .card .card-center { font-size: 1.2rem; }
+
+    .hand-type-label {
+        font-size: 0.75rem;
+        bottom: 8px;
+    }
+
+    .game-message {
+        margin-top: 10px;
+        padding: 8px 20px;
+        font-size: 0.85rem;
+        min-width: auto;
+    }
+
+    .player-area {
+        gap: 10px;
+        padding: 10px 10px;
+        margin: 0 -10px;
+    }
+
+    .player-avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 1.1rem;
+    }
+
+    .player-name {
+        font-size: 0.95rem;
+    }
+
+    .player-hand {
+        min-height: 70px;
+        padding: 5px 0;
+    }
+
+    .card {
+        width: 48px;
+        height: 67px;
+        margin: 0 -6px;
+        border-radius: 5px;
+    }
+
+    .card-rank {
+        font-size: 0.85rem;
+    }
+
+    .card-suit-small {
+        font-size: 0.7rem;
+    }
+
+    .card-center {
+        font-size: 1.4rem;
+    }
+
+    .card-corner {
+        padding: 2px 4px;
+    }
+
+    .card:hover {
+        transform: translateY(-8px) scale(1.02);
+    }
+
+    .card.selected {
+        transform: translateY(-18px) scale(1.05);
+    }
+
+    .player-actions {
+        gap: 10px;
+    }
+
+    .footer {
+        bottom: 4px;
+    }
+
+    .footer a {
+        font-size: 0.65rem;
+    }
+
+    .footer svg {
+        width: 14px;
+        height: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .table-frame {
+        padding: 4px;
+    }
+
+    .header {
+        padding: 8px 10px;
+    }
+
+    .logo-icon {
+        font-size: 1.5rem;
+    }
+
+    .logo h1 {
+        font-size: 1rem;
+        letter-spacing: 1px;
+    }
+
+    .controls {
+        gap: 6px;
+    }
+
+    .control-group {
+        gap: 4px;
+    }
+
+    .control-group label {
+        font-size: 0.6rem;
+    }
+
+    .control-group select {
+        padding: 5px 20px 5px 6px;
+        font-size: 0.7rem;
+    }
+
+    .btn {
+        padding: 6px 12px;
+        font-size: 0.7rem;
+        letter-spacing: 0.5px;
+    }
+
+    .sound-toggle {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+    }
+
+    .opponents-area {
+        gap: 10px;
+        min-height: 80px;
+    }
+
+    .avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 0.9rem;
+    }
+
+    .opponent-name {
+        font-size: 0.7rem;
+    }
+
+    .opponent-cards-count {
+        font-size: 0.6rem;
+    }
+
+    .card-back {
+        width: 22px;
+        height: 32px;
+        margin: 0 -8px;
+        border-width: 1px;
+    }
+
+    .card-back::after {
+        font-size: 0.6rem;
+    }
+
+    .play-zone {
+        height: 110px;
+        border-radius: 50px;
+    }
+
+    .play-group .card {
+        width: 36px;
+        height: 50px;
+        margin: 0 -2px;
+    }
+
+    .play-group .card .card-rank { font-size: 0.65rem; }
+    .play-group .card .card-suit-small { font-size: 0.55rem; }
+    .play-group .card .card-center { font-size: 1rem; }
+
+    .game-message {
+        padding: 6px 15px;
+        font-size: 0.75rem;
+        border-radius: 20px;
+    }
+
+    .player-avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 0.9rem;
+    }
+
+    .player-name {
+        font-size: 0.85rem;
+    }
+
+    .card {
+        width: 40px;
+        height: 56px;
+        margin: 0 -5px;
+        border-radius: 4px;
+    }
+
+    .card-rank {
+        font-size: 0.75rem;
+    }
+
+    .card-suit-small {
+        font-size: 0.6rem;
+    }
+
+    .card-center {
+        font-size: 1.2rem;
+    }
+
+    .card:hover {
+        transform: translateY(-6px) scale(1.02);
+    }
+
+    .card.selected {
+        transform: translateY(-14px) scale(1.05);
+    }
+
+    .winner-trophy {
+        font-size: 3.5rem;
+    }
+
+    .winner-text {
+        font-size: 2rem;
+        margin-bottom: 25px;
+    }
+
+    .rules-modal {
+        max-height: 80vh;
+    }
+
+    .rules-header {
+        padding: 15px 20px;
+    }
+
+    .rules-header h2 {
+        font-size: 1.1rem;
+    }
+
+    .rules-content {
+        padding: 15px;
+    }
+
+    .rules-content h3 {
+        font-size: 0.9rem;
+    }
+
+    .rules-content p,
+    .rules-content li {
+        font-size: 0.85rem;
+    }
+
+    .rules-table td {
+        padding: 8px;
+        font-size: 0.8rem;
+    }
+
+    .rules-table td:first-child {
+        width: 100px;
+    }
+}
+
+@media (max-height: 600px) {
+    .header {
+        padding: 6px 10px;
+    }
+
+    .opponents-area {
+        min-height: 70px;
+        padding: 3px 0 8px;
+    }
+
+    .play-zone {
+        height: 100px;
+    }
+
+    .game-message {
+        margin-top: 6px;
+    }
+
+    .player-area {
+        gap: 6px;
+        padding: 8px 10px;
+    }
+
+    .player-hand {
+        min-height: 60px;
+    }
+}
+</style>
+</head>
+<body>
+<div class="table-frame">
+<div class="game-container">
+    <div class="header">
+        <div class="logo">
+            <span class="logo-icon">🎴</span>
+            <h1>BIG TWO</h1>
+        </div>
+        <div class="controls">
+            <div class="control-group">
+                <label>Players</label>
+                <select id="numCpus">
+                    <option value="1">2</option>
+                    <option value="2" selected>3</option>
+                    <option value="3">4</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Difficulty</label>
+                <select id="difficulty">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" id="newGameBtn">New Game</button>
+            <button class="btn btn-secondary" id="rulesBtn">Rules</button>
+            <button class="sound-toggle" id="soundToggle" title="Toggle Sound">🔊</button>
+        </div>
+    </div>
+    
+    <div class="game-area">
+        <div class="opponents-area">
+            <div class="opponent" id="player1">
+                <div class="avatar" id="avatar1">🤖</div>
+                <div class="opponent-info">
+                    <div class="opponent-name">Player 2</div>
+                    <div class="opponent-cards-count" id="cpu1-count">17 cards</div>
+                </div>
+                <div class="opponent-hand" id="cpu1-cards"></div>
+            </div>
+            <div class="opponent" id="player2">
+                <div class="avatar" id="avatar2">🎭</div>
+                <div class="opponent-info">
+                    <div class="opponent-name">Player 3</div>
+                    <div class="opponent-cards-count" id="cpu2-count">17 cards</div>
+                </div>
+                <div class="opponent-hand" id="cpu2-cards"></div>
+            </div>
+            <div class="opponent" id="player3" style="display:none;">
+                <div class="avatar" id="avatar3">👾</div>
+                <div class="opponent-info">
+                    <div class="opponent-name">Player 4</div>
+                    <div class="opponent-cards-count" id="cpu3-count">13 cards</div>
+                </div>
+                <div class="opponent-hand" id="cpu3-cards"></div>
+            </div>
+        </div>
+        
+        <div class="center-area">
+            <div class="play-zone">
+                <div class="play-zone-label">Play Area</div>
+                <div class="trick-counter" id="trick-counter"></div>
+                <div class="played-cards-stack" id="played-cards-stack"></div>
+                <div class="hand-type-label" id="hand-type"></div>
+            </div>
+            <div class="game-message" id="game-message">Press <strong>New Game</strong> to start</div>
+        </div>
+        
+        <div class="player-area">
+            <div class="player-info">
+                <div class="player-avatar" id="playerAvatar">👤</div>
+                <div class="player-name">You</div>
+            </div>
+            <div class="player-hand" id="player-hand"></div>
+            <div class="player-actions">
+                <button class="btn btn-play" id="btn-play" disabled>Play Cards</button>
+                <button class="btn btn-pass" id="btn-pass" disabled>Pass</button>
+            </div>
+        </div>
+    </div>
+    <div class="footer">
+        <a href="https://github.com/rhukster/bigtwo" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            View on GitHub
+        </a>
+    </div>
+</div>
+</div>
+
+<div class="overlay" id="winner-overlay">
+    <div class="winner-content">
+        <div class="winner-trophy">🏆</div>
+        <div class="winner-text" id="winner-text"></div>
+        <button class="btn btn-primary" id="playAgainBtn" style="font-size:1.1rem; padding: 15px 40px;">Play Again</button>
+    </div>
+</div>
+
+<div class="overlay" id="rules-overlay">
+    <div class="rules-modal">
+        <div class="rules-header">
+            <h2>🎴 Game Rules</h2>
+            <button class="rules-close" id="rulesClose">&times;</button>
+        </div>
+        <div class="rules-content">
+            <section>
+                <h3>Objective</h3>
+                <p>Be the first player to empty your hand of all cards.</p>
+            </section>
+            <section>
+                <h3>Setup</h3>
+                <p>2–4 players (3 is optimal). Cards are dealt evenly from a standard 52-card deck.</p>
+            </section>
+            <section>
+                <h3>Card Rankings</h3>
+                <p><strong>Ranks</strong> (low → high): 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → J → Q → K → A → <em>2 (highest!)</em></p>
+                <p><strong>Suits</strong> (low → high): ♦ → ♣ → ♥ → ♠</p>
+                <p>When cards share the same rank, suit breaks the tie.</p>
+            </section>
+            <section>
+                <h3>Valid Combinations</h3>
+                <table class="rules-table">
+                    <tr><td>Single</td><td>Any single card</td></tr>
+                    <tr><td>Pair</td><td>Two cards of same rank</td></tr>
+                    <tr><td>Triple</td><td>Three cards of same rank</td></tr>
+                    <tr><td>Straight</td><td>5 consecutive ranks (any suits)</td></tr>
+                    <tr><td>Flush</td><td>5 cards of same suit</td></tr>
+                    <tr><td>Full House</td><td>Three-of-a-kind + pair</td></tr>
+                    <tr><td>Four of a Kind</td><td>Four same rank + 1 kicker</td></tr>
+                    <tr><td>Straight Flush</td><td>5 consecutive, same suit</td></tr>
+                </table>
+            </section>
+            <section>
+                <h3>Gameplay</h3>
+                <ul>
+                    <li>Player with <strong>3♦</strong> goes first and must include it</li>
+                    <li>Beat the current play with the <strong>same type</strong> but <strong>higher value</strong>, or pass</li>
+                    <li>You cannot pass if you have <strong>control</strong> (were the last to play)</li>
+                    <li>When all other players pass, remaining player gains control and may lead any combo</li>
+                    <li><em>First to empty their hand wins!</em></li>
+                </ul>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script>
+const SUITS = ['♦', '♣', '♥', '♠'];
+const SUIT_ORDER = { '♦': 0, '♣': 1, '♥': 2, '♠': 3 };
+const RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
+const RANK_ORDER = { '3': 0, '4': 1, '5': 2, '6': 3, '7': 4, '8': 5, '9': 6, '10': 7, 'J': 8, 'Q': 9, 'K': 10, 'A': 11, '2': 12 };
+
+let gs = {
+    players: [],
+    numPlayers: 3,
+    currentPlayer: 0,
+    currentPlay: null,
+    currentPlayType: null,
+    controlPlayer: null,
+    passCount: 0,
+    gameOver: false,
+    selectedCards: [],
+    difficulty: 'medium',
+    firstPlayMade: false,
+    playHistory: [] // Track all plays in current trick
+};
+
+let soundEnabled = true;
+
+// Audio context for sound effects
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) audioCtx = new AudioContext();
+}
+
+function playSound(type) {
+    if (!soundEnabled || !audioCtx) return;
+    
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    const now = audioCtx.currentTime;
+    
+    if (type === 'play') {
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } else if (type === 'pass') {
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.15);
+    } else if (type === 'win') {
+        [0, 0.15, 0.3].forEach((delay, i) => {
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.connect(g);
+            g.connect(audioCtx.destination);
+            o.frequency.setValueAtTime([523, 659, 784][i], now + delay);
+            g.gain.setValueAtTime(0.1, now + delay);
+            g.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.3);
+            o.start(now + delay);
+            o.stop(now + delay + 0.3);
+        });
+    } else if (type === 'select') {
+        osc.frequency.setValueAtTime(600, now);
+        gain.gain.setValueAtTime(0.03, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
+    }
+}
+
+function createDeck() {
+    const deck = [];
+    SUITS.forEach(suit => RANKS.forEach(rank => deck.push({rank, suit})));
+    return deck;
+}
+
+function shuffle(deck) {
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+}
+
+function cmpCards(a, b) {
+    if (RANK_ORDER[a.rank] !== RANK_ORDER[b.rank]) return RANK_ORDER[a.rank] - RANK_ORDER[b.rank];
+    return SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit];
+}
+
+function sortH(h) { return [...h].sort(cmpCards); }
+function cardVal(c) { return RANK_ORDER[c.rank] * 4 + SUIT_ORDER[c.suit]; }
+
+function getType(cards) {
+    const n = cards.length;
+    if (n === 0) return null;
+    const s = sortH(cards);
+    const r = s.map(c => RANK_ORDER[c.rank]);
+    const su = s.map(c => c.suit);
+    
+    if (n === 1) return {type:'single', str: cardVal(s[0])};
+    if (n === 2 && r[0] === r[1]) return {type:'pair', str: cardVal(s[1])};
+    if (n === 3 && r[0] === r[1] && r[1] === r[2]) return {type:'triple', str: cardVal(s[2])};
+    
+    if (n === 5) {
+        const flush = su.every(x => x === su[0]);
+        const sr = [...r].sort((a,b)=>a-b);
+        const straight = sr.every((v,i) => i === 0 || v === sr[i-1]+1);
+        const cnt = {};
+        r.forEach(x => cnt[x] = (cnt[x]||0)+1);
+        const vals = Object.values(cnt).sort((a,b)=>b-a);
+        
+        if (vals[0] === 4) return {type:'four', str: Object.keys(cnt).find(k=>cnt[k]===4)*100};
+        if (vals[0] === 3 && vals[1] === 2) return {type:'fullhouse', str: Object.keys(cnt).find(k=>cnt[k]===3)*100};
+        if (flush && straight) return {type:'straightflush', str: cardVal(s[4])};
+        if (flush) return {type:'flush', str: cardVal(s[4])};
+        if (straight) return {type:'straight', str: cardVal(s[4])};
+    }
+    return null;
+}
+
+function canBeat(nc, cp, ct) {
+    if (!cp) return true;
+    const nt = getType(nc);
+    if (!nt) return false;
+    if (nt.type !== ct.type) return false;
+    return nt.str > ct.str;
+}
+
+function findStarter() {
+    for (let p = 0; p < gs.numPlayers; p++) {
+        if (gs.players[p].some(c => c.rank === '3' && c.suit === '♦')) return p;
+    }
+    return 0;
+}
+
+function startGame() {
+    initAudio();
+    document.getElementById('winner-overlay').style.display = 'none';
+    gs.difficulty = document.getElementById('difficulty').value;
+    const numCpus = parseInt(document.getElementById('numCpus').value);
+    gs.numPlayers = numCpus + 1;
+    
+    const deck = shuffle(createDeck());
+    gs.players = [];
+    for (let i = 0; i < gs.numPlayers; i++) gs.players.push([]);
+    
+    const cardsPerPlayer = Math.floor(52 / gs.numPlayers);
+    const totalDealt = cardsPerPlayer * gs.numPlayers;
+    for (let i = 0; i < totalDealt; i++) {
+        gs.players[i % gs.numPlayers].push(deck[i]);
+    }
+    gs.players = gs.players.map(sortH);
+    
+    gs.currentPlay = null;
+    gs.currentPlayType = null;
+    gs.passCount = 0;
+    gs.gameOver = false;
+    gs.selectedCards = [];
+    gs.firstPlayMade = false;
+    gs.playHistory = [];
+    gs.controlPlayer = findStarter();
+    gs.currentPlayer = gs.controlPlayer;
+    render();
+    if (gs.currentPlayer !== 0) {
+        msg('Player ' + (gs.currentPlayer + 1) + ' has 3♦ and goes first!');
+        setTimeout(cpuPlay, 1500);
+    } else {
+        msg("You have 3♦! Select cards to play.");
+    }
+}
+
+function render() {
+    // Show/hide CPU areas
+    [1, 2, 3].forEach(cpu => {
+        const playerEl = document.getElementById('player' + cpu);
+        if (cpu < gs.numPlayers) {
+            playerEl.style.display = 'flex';
+            playerEl.classList.remove('inactive');
+            const cont = document.getElementById('cpu'+cpu+'-cards');
+            const cnt = document.getElementById('cpu'+cpu+'-count');
+            const h = gs.players[cpu];
+            cont.innerHTML = '';
+            for (let i = 0; i < h.length; i++) {
+                const cb = document.createElement('div');
+                cb.className = 'card-back';
+                cont.appendChild(cb);
+            }
+            cnt.textContent = h.length + ' card' + (h.length !== 1 ? 's' : '');
+            document.getElementById('avatar' + cpu).classList.toggle('current-turn', gs.currentPlayer === cpu);
+        } else {
+            playerEl.style.display = 'none';
+            playerEl.classList.add('inactive');
+        }
+    });
+    
+    const ph = document.getElementById('player-hand');
+    ph.innerHTML = '';
+    gs.players[0].forEach((c, i) => {
+        const el = mkCard(c);
+        el.onclick = () => toggleSel(i);
+        if (gs.selectedCards.includes(i)) el.classList.add('selected');
+        ph.appendChild(el);
+    });
+    document.getElementById('playerAvatar').classList.toggle('current-turn', gs.currentPlayer === 0);
+    
+    // Render stacked plays
+    const stack = document.getElementById('played-cards-stack');
+    stack.innerHTML = '';
+    
+    gs.playHistory.forEach((play, index) => {
+        const group = document.createElement('div');
+        group.className = 'play-group' + (index < gs.playHistory.length - 1 ? ' old' : '');
+        
+        // Offset each group slightly for stacking effect
+        const offsetX = (index - (gs.playHistory.length - 1) / 2) * 8;
+        const offsetY = index * -3;
+        group.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+        group.style.zIndex = index;
+        
+        play.cards.forEach((c, i) => {
+            const el = mkCard(c);
+            // Only animate if this play hasn't been rendered yet
+            if (index === gs.playHistory.length - 1 && !play.animated) {
+                el.classList.add('played');
+                el.style.animationDelay = (i * 0.05) + 's';
+            }
+            group.appendChild(el);
+        });
+        
+        // Mark as animated after first render
+        play.animated = true;
+        
+        stack.appendChild(group);
+    });
+    
+    const ht = document.getElementById('hand-type');
+    if (gs.currentPlayType) {
+        const names = {single:'Single',pair:'Pair',triple:'Triple',straight:'Straight',flush:'Flush',fullhouse:'Full House',four:'Four of a Kind',straightflush:'Straight Flush'};
+        ht.textContent = names[gs.currentPlayType.type] || '';
+    } else ht.textContent = '';
+    
+    // Update trick counter
+    const tc = document.getElementById('trick-counter');
+    if (gs.playHistory.length > 0) {
+        tc.textContent = gs.playHistory.length + ' play' + (gs.playHistory.length !== 1 ? 's' : '');
+    } else {
+        tc.textContent = '';
+    }
+    
+    updBtns();
+}
+
+function mkCard(c) {
+    const el = document.createElement('div');
+    const isRed = c.suit === '♥' || c.suit === '♦';
+    el.className = 'card ' + (isRed ? 'red' : 'black');
+    el.innerHTML = `
+        <div class="card-corner card-corner-top">
+            <span class="card-rank">${c.rank}</span>
+            <span class="card-suit-small">${c.suit}</span>
+        </div>
+        <span class="card-center">${c.suit}</span>
+        <div class="card-corner card-corner-bottom">
+            <span class="card-rank">${c.rank}</span>
+            <span class="card-suit-small">${c.suit}</span>
+        </div>
+    `;
+    return el;
+}
+
+function toggleSel(i) {
+    if (gs.currentPlayer !== 0 || gs.gameOver) return;
+    playSound('select');
+    const p = gs.selectedCards.indexOf(i);
+    if (p === -1) gs.selectedCards.push(i);
+    else gs.selectedCards.splice(p, 1);
+    render();
+}
+
+function updBtns() {
+    const isTurn = gs.currentPlayer === 0 && !gs.gameOver;
+    document.getElementById('btn-play').disabled = !isTurn || gs.selectedCards.length === 0;
+    document.getElementById('btn-pass').disabled = !isTurn || gs.controlPlayer === 0;
+}
+
+function msg(m) { document.getElementById('game-message').innerHTML = m; }
+
+function playCards() {
+    if (gs.currentPlayer !== 0) return;
+    const sel = gs.selectedCards.map(i => gs.players[0][i]);
+    
+    if (!gs.firstPlayMade) {
+        if (!sel.some(c => c.rank === '3' && c.suit === '♦')) {
+            msg("First play must include <strong>3♦</strong>!");
+            return;
+        }
+    }
+    
+    const ht = getType(sel);
+    if (!ht) { msg("Invalid combination!"); return; }
+    if (gs.currentPlay && !canBeat(sel, gs.currentPlay, gs.currentPlayType)) {
+        msg("Must play <strong>same type</strong> but higher!");
+        return;
+    }
+    
+    playSound('play');
+    gs.currentPlay = sel;
+    gs.currentPlayType = ht;
+    gs.controlPlayer = 0;
+    gs.passCount = 0;
+    gs.firstPlayMade = true;
+    gs.playHistory.push({ cards: sel, player: 0 });
+    
+    gs.selectedCards.sort((a,b) => b - a).forEach(i => gs.players[0].splice(i, 1));
+    gs.selectedCards = [];
+    
+    if (checkWin(0)) return;
+    nextPlayer();
+}
+
+function passPlay() {
+    if (gs.currentPlayer !== 0 || gs.controlPlayer === 0) return;
+    playSound('pass');
+    gs.passCount++;
+    msg("You passed.");
+    if (gs.passCount >= gs.numPlayers - 1) {
+        gs.currentPlay = null;
+        gs.currentPlayType = null;
+        gs.passCount = 0;
+        gs.playHistory = []; // Clear history when trick ends
+    }
+    nextPlayer();
+}
+
+function nextPlayer() {
+    gs.currentPlayer = (gs.currentPlayer + 1) % gs.numPlayers;
+    render();
+    if (gs.currentPlayer !== 0) {
+        setTimeout(cpuPlay, 1000);
+    } else {
+        msg(gs.controlPlayer === 0 ? "You have control! Play any combination." : "Your turn — beat it or pass.");
+    }
+}
+
+function cpuPlay() {
+    if (gs.gameOver) return;
+    const cpu = gs.currentPlayer;
+    const h = gs.players[cpu];
+    const play = findPlay(h, cpu);
+    
+    if (play) {
+        playSound('play');
+        gs.currentPlay = play;
+        gs.currentPlayType = getType(play);
+        gs.controlPlayer = cpu;
+        gs.passCount = 0;
+        gs.firstPlayMade = true;
+        gs.playHistory.push({ cards: play, player: cpu });
+        play.forEach(pc => {
+            const idx = h.findIndex(c => c.rank === pc.rank && c.suit === pc.suit);
+            if (idx !== -1) h.splice(idx, 1);
+        });
+        msg('Player ' + (cpu + 1) + ' plays!');
+        if (checkWin(cpu)) return;
+    } else {
+        playSound('pass');
+        gs.passCount++;
+        msg('Player ' + (cpu + 1) + ' passes.');
+        if (gs.passCount >= gs.numPlayers - 1) {
+            gs.currentPlay = null;
+            gs.currentPlayType = null;
+            gs.passCount = 0;
+            gs.playHistory = []; // Clear history when trick ends
+        }
+    }
+    nextPlayer();
+}
+
+function findPlay(h, cpu) {
+    const diff = gs.difficulty;
+    const ctrl = gs.controlPlayer === cpu;
+    
+    if (ctrl) {
+        const d3 = h.find(c => c.rank === '3' && c.suit === '♦');
+        if (d3 && !gs.firstPlayMade) {
+            const pr = h.find(c => c.rank === '3' && c.suit !== '♦');
+            if (pr && diff !== 'easy') return sortH([d3, pr]);
+            return [d3];
+        }
+        if (diff === 'easy') return [h[0]];
+        const pair = findPair(h);
+        if (pair) return pair;
+        return [h[0]];
+    }
+    
+    if (!gs.currentPlay) return null;
+    const cands = findBeaters(h, gs.currentPlayType.type);
+    if (cands.length === 0) return null;
+    
+    if (diff === 'easy') {
+        if (Math.random() < 0.3) return null;
+        return cands[Math.floor(Math.random() * cands.length)];
+    }
+    return cands[0];
+}
+
+function findPair(h) {
+    for (let i = 0; i < h.length - 1; i++) {
+        if (h[i].rank === h[i+1].rank) return [h[i], h[i+1]];
+    }
+    return null;
+}
+
+function findBeaters(h, type) {
+    const cands = [];
+    const n = type === 'single' ? 1 : type === 'pair' ? 2 : type === 'triple' ? 3 : 5;
+    
+    if (n === 1) {
+        h.forEach(c => { if (canBeat([c], gs.currentPlay, gs.currentPlayType)) cands.push([c]); });
+    } else if (n === 2) {
+        for (let i = 0; i < h.length - 1; i++) {
+            if (h[i].rank === h[i+1].rank) {
+                const p = [h[i], h[i+1]];
+                if (canBeat(p, gs.currentPlay, gs.currentPlayType)) cands.push(p);
+            }
+        }
+    } else if (n === 3) {
+        for (let i = 0; i < h.length - 2; i++) {
+            if (h[i].rank === h[i+1].rank && h[i+1].rank === h[i+2].rank) {
+                const t = [h[i], h[i+1], h[i+2]];
+                if (canBeat(t, gs.currentPlay, gs.currentPlayType)) cands.push(t);
+            }
+        }
+    } else if (n === 5) {
+        for (let a = 0; a < h.length-4; a++)
+        for (let b = a+1; b < h.length-3; b++)
+        for (let c = b+1; c < h.length-2; c++)
+        for (let d = c+1; d < h.length-1; d++)
+        for (let e = d+1; e < h.length; e++) {
+            const combo = [h[a],h[b],h[c],h[d],h[e]];
+            if (getType(combo) && canBeat(combo, gs.currentPlay, gs.currentPlayType)) cands.push(combo);
+        }
+    }
+    return cands.sort((a,b) => getType(a).str - getType(b).str);
+}
+
+function checkWin(p) {
+    if (gs.players[p].length === 0) {
+        gs.gameOver = true;
+        playSound('win');
+        document.getElementById('winner-text').textContent = p === 0 ? '🎉 You Win!' : 'Player ' + (p + 1) + ' Wins!';
+        document.getElementById('winner-overlay').style.display = 'flex';
+        createConfetti();
+        return true;
+    }
+    return false;
+}
+
+function createConfetti() {
+    const colors = ['#d4af37', '#f4cf67', '#4CAF50', '#ef5350', '#667eea', '#f093fb'];
+    for (let i = 0; i < 100; i++) {
+        setTimeout(() => {
+            const confetti = document.createElement('div');
+            confetti.className = 'confetti';
+            confetti.style.left = Math.random() * 100 + 'vw';
+            confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+            confetti.style.width = (Math.random() * 10 + 5) + 'px';
+            confetti.style.height = confetti.style.width;
+            confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            document.body.appendChild(confetti);
+            setTimeout(() => confetti.remove(), 4000);
+        }, i * 30);
+    }
+}
+
+// Event listeners
+document.getElementById('newGameBtn').onclick = startGame;
+document.getElementById('playAgainBtn').onclick = startGame;
+document.getElementById('btn-play').onclick = playCards;
+document.getElementById('btn-pass').onclick = passPlay;
+
+document.getElementById('numCpus').onchange = function() {
+    const numCpus = parseInt(this.value);
+    [1, 2, 3].forEach(cpu => {
+        const el = document.getElementById('player' + cpu);
+        el.style.display = cpu <= numCpus ? 'flex' : 'none';
+    });
+};
+
+document.getElementById('rulesBtn').onclick = () => {
+    document.getElementById('rules-overlay').style.display = 'flex';
+};
+
+document.getElementById('rulesClose').onclick = () => {
+    document.getElementById('rules-overlay').style.display = 'none';
+};
+
+document.getElementById('rules-overlay').onclick = (e) => {
+    if (e.target.id === 'rules-overlay') {
+        document.getElementById('rules-overlay').style.display = 'none';
+    }
+};
+
+document.getElementById('soundToggle').onclick = function() {
+    soundEnabled = !soundEnabled;
+    this.textContent = soundEnabled ? '🔊' : '🔇';
+    this.classList.toggle('muted', !soundEnabled);
+    if (soundEnabled) initAudio();
+};
+</script>
+</body>
+</html>
