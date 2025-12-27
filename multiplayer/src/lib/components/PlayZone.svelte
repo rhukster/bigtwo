@@ -1,14 +1,38 @@
 <script lang="ts">
-  import type { Card as CardType } from '../game/types';
+  import type { Card as CardType, Play } from '../game/types';
   import Card from './Card.svelte';
 
   interface Props {
     currentPlay: CardType[] | null;
     currentPlayType: string | null;
     lastPlayerName: string | null;
+    playHistory?: Play[];
   }
 
-  let { currentPlay, currentPlayType, lastPlayerName }: Props = $props();
+  let { currentPlay, currentPlayType, lastPlayerName, playHistory = [] }: Props = $props();
+
+  // Get all plays to show (last 4, including current)
+  let allPlays = $derived(
+    playHistory.length > 0
+      ? playHistory.slice(-4)
+      : []
+  );
+
+  // Generate consistent random offset based on play timestamp
+  function getRandomOffset(timestamp: number, index: number) {
+    // Use timestamp as seed for consistent positioning
+    const seed = timestamp + index * 1000;
+    const pseudoRandom = (n: number) => {
+      const x = Math.sin(n) * 10000;
+      return x - Math.floor(x);
+    };
+
+    return {
+      x: (pseudoRandom(seed) - 0.5) * 60, // -30 to 30 px
+      y: (pseudoRandom(seed + 1) - 0.5) * 40, // -20 to 20 px
+      rotation: (pseudoRandom(seed + 2) - 0.5) * 20, // -10 to 10 degrees
+    };
+  }
 </script>
 
 <div class="play-zone">
@@ -23,17 +47,34 @@
     {/if}
   </div>
 
-  <div class="played-cards">
-    {#if currentPlay && currentPlay.length > 0}
-      {#each currentPlay as card, i}
-        <div class="played-card" style="--index: {i}">
-          <Card {card} />
-        </div>
-      {/each}
-    {:else}
+  <div class="play-pile">
+    {#if allPlays.length === 0 && (!currentPlay || currentPlay.length === 0)}
       <div class="empty-play">
         <span>No cards played</span>
       </div>
+    {:else}
+      {#each allPlays as play, playIndex}
+        {@const offset = getRandomOffset(play.timestamp, playIndex)}
+        {@const isCurrentPlay = playIndex === allPlays.length - 1}
+        {@const depth = allPlays.length - 1 - playIndex}
+        <div
+          class="pile-layer"
+          class:current={isCurrentPlay}
+          style="
+            --offset-x: {offset.x}px;
+            --offset-y: {offset.y}px;
+            --rotation: {offset.rotation}deg;
+            --depth: {depth};
+            z-index: {playIndex};
+          "
+        >
+          {#each play.cards as card, cardIndex}
+            <div class="piled-card" style="--card-index: {cardIndex}; --card-count: {play.cards.length}">
+              <Card {card} />
+            </div>
+          {/each}
+        </div>
+      {/each}
     {/if}
   </div>
 </div>
@@ -56,6 +97,8 @@
     margin-bottom: 4px;
     text-align: center;
     font-size: 0.75rem;
+    position: relative;
+    z-index: 100;
   }
 
   .player-name {
@@ -73,15 +116,32 @@
     font-style: italic;
   }
 
-  .played-cards {
+  .play-pile {
+    position: relative;
     display: flex;
     justify-content: center;
-    gap: 4px;
     align-items: center;
+    min-height: 120px;
+    min-width: 200px;
   }
 
-  .played-card {
-    transform: rotate(calc((var(--index) - 2) * 3deg));
+  .pile-layer {
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+    transform: translate(var(--offset-x), var(--offset-y)) rotate(var(--rotation));
+    opacity: calc(1 - var(--depth) * 0.15);
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+  }
+
+  .pile-layer.current {
+    opacity: 1;
+  }
+
+  .piled-card {
+    /* Slight fan effect within each play */
+    transform: rotate(calc((var(--card-index) - (var(--card-count) - 1) / 2) * 4deg));
   }
 
   .empty-play {
@@ -97,7 +157,7 @@
     .play-zone {
       padding: 4px;
       border-radius: 6px;
-      flex: 0 1 auto; /* Don't grow excessively on mobile */
+      flex: 0 1 auto;
       max-height: 40vh;
     }
 
@@ -110,8 +170,13 @@
       margin-left: 4px;
     }
 
-    .played-cards {
-      gap: 1px;
+    .play-pile {
+      min-height: 100px;
+      min-width: 150px;
+    }
+
+    .piled-card {
+      transform: rotate(calc((var(--card-index) - (var(--card-count) - 1) / 2) * 3deg));
     }
 
     .empty-play {
@@ -131,6 +196,11 @@
     .play-info {
       margin-bottom: 2px;
       font-size: 0.6rem;
+    }
+
+    .play-pile {
+      min-height: 80px;
+      min-width: 120px;
     }
 
     .empty-play {

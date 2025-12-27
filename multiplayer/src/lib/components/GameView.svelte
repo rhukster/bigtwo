@@ -448,6 +448,7 @@
     {currentPlay}
     currentPlayType={currentPlayType?.type ? getPlayTypeName(currentPlayType.type) : null}
     {lastPlayerName}
+    playHistory={gameState.playHistory}
   />
 
   <!-- Turn indicator -->

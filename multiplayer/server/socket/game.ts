@@ -712,7 +712,24 @@ function executePlay(
 
   // Check for win
   if (player.hand.length === 0) {
-    endGameWithWinner(io, room, game, playerIndex, gameRooms);
+    // Send updated state to all players so they can see the winning cards
+    for (const p of room.players) {
+      if (!p.isAi && p.socketId) {
+        const clientState = createClientGameState(game, p.id);
+        io.to(p.socketId).emit('game:state', clientState);
+      }
+    }
+    // Send to spectators
+    for (const spectator of room.spectators) {
+      const clientState = createClientGameState(game, null);
+      io.to(spectator.socketId).emit('game:state', clientState);
+    }
+
+    // Delay showing the winner modal so players can see the winning cards
+    // This gives time for the card animation to play before announcing the winner
+    setTimeout(() => {
+      endGameWithWinner(io, room, game, playerIndex, gameRooms);
+    }, 1500);
     return;
   }
 
