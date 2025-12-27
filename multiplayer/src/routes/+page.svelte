@@ -126,7 +126,8 @@
 </script>
 
 <svelte:head>
-  <title>Big Two - Multiplayer Chinese Poker</title>
+  <title>Big Two - Free Online Multiplayer Card Game | Play Dai Di Online</title>
+  <meta name="description" content="Play Big Two (Dai Di, Pusoy Dos) online with friends for free! A classic Asian climbing card game. No download required - play instantly in your browser." />
 </svelte:head>
 
 <div class="container">
@@ -281,6 +282,40 @@
       </p>
     {/if}
   </div>
+
+  <!-- SEO Content - Static text for search engines -->
+  <section class="seo-content">
+    <h2>What is Big Two?</h2>
+    <p>
+      <strong>Big Two</strong> (also known as <em>Dai Di</em>, <em>Pusoy Dos</em>, or <em>Chinese Poker</em>) is a popular
+      climbing card game that originated in Asia. Players compete to be the first to empty their hand by playing
+      increasingly powerful card combinations.
+    </p>
+
+    <h3>How to Play</h3>
+    <ul>
+      <li><strong>Singles</strong> - Play any single card</li>
+      <li><strong>Pairs</strong> - Two cards of the same rank</li>
+      <li><strong>Triples</strong> - Three cards of the same rank</li>
+      <li><strong>Straights</strong> - Five or more consecutive cards</li>
+      <li><strong>Full House</strong> - Three of a kind plus a pair</li>
+      <li><strong>Four of a Kind</strong> - Four cards of the same rank plus any card</li>
+      <li><strong>Straight Flush</strong> - Five consecutive cards of the same suit</li>
+    </ul>
+
+    <h3>Card Rankings</h3>
+    <p>
+      In Big Two, the <strong>2 of Spades</strong> is the highest card! Card ranks from lowest to highest:
+      3, 4, 5, 6, 7, 8, 9, 10, J, Q, K, A, 2. Suits rank from lowest to highest:
+      Diamonds, Clubs, Hearts, Spades.
+    </p>
+
+    <h3>Play Free Online</h3>
+    <p>
+      Play Big Two online with friends or against AI opponents. No download required -
+      just create a room and share the code with your friends to start playing instantly!
+    </p>
+  </section>
 </div>
 
 <style>
@@ -482,6 +517,56 @@
     to { transform: rotate(360deg); }
   }
 
+  /* SEO Content */
+  .seo-content {
+    max-width: 600px;
+    margin-top: 60px;
+    padding: 32px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    position: relative;
+    z-index: 1;
+  }
+
+  .seo-content h2 {
+    font-size: 1.5rem;
+    color: var(--gold);
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  .seo-content h3 {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    margin: 24px 0 12px;
+  }
+
+  .seo-content p {
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+
+  .seo-content ul {
+    color: var(--text-secondary);
+    padding-left: 24px;
+    line-height: 1.8;
+  }
+
+  .seo-content li {
+    margin-bottom: 8px;
+  }
+
+  .seo-content strong {
+    color: var(--text-primary);
+  }
+
+  .seo-content em {
+    color: var(--gold);
+    font-style: normal;
+  }
+
   /* Mobile adjustments */
   @media (max-width: 480px) {
     .logo h1 {
@@ -500,6 +585,19 @@
 
     .auth-card {
       padding: 24px 20px;
+    }
+
+    .seo-content {
+      margin-top: 40px;
+      padding: 24px 20px;
+    }
+
+    .seo-content h2 {
+      font-size: 1.25rem;
+    }
+
+    .seo-content h3 {
+      font-size: 1rem;
     }
   }
 </style>
