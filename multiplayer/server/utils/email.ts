@@ -1,29 +1,19 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-// Create transporter - will be configured from env vars
-let transporter: nodemailer.Transporter | null = null;
+let resend: Resend | null = null;
 
-function getTransporter() {
-  if (transporter) return transporter;
+function getResend(): Resend | null {
+  if (resend) return resend;
 
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '465');
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const apiKey = process.env.RESEND_API_KEY;
 
-  if (!host || !user || !pass) {
-    console.warn('[Email] SMTP not configured - emails will be logged to console');
+  if (!apiKey) {
+    console.warn('[Email] RESEND_API_KEY not configured - emails will be logged to console');
     return null;
   }
 
-  transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass }
-  });
-
-  return transporter;
+  resend = new Resend(apiKey);
+  return resend;
 }
 
 export async function sendMagicLinkEmail(
@@ -31,7 +21,7 @@ export async function sendMagicLinkEmail(
   username: string,
   token: string
 ): Promise<boolean> {
-  const appUrl = process.env.APP_URL || 'http://localhost:3001';
+  const appUrl = process.env.APP_URL || 'http://localhost:5173';
   const verifyUrl = `${appUrl}/api/auth/verify?token=${token}`;
 
   const html = `
@@ -72,20 +62,9 @@ export async function sendMagicLinkEmail(
     </html>
   `;
 
-  const text = `
-Hey ${username}!
+  const client = getResend();
 
-Click this link to log in to Big Two:
-${verifyUrl}
-
-This link expires in 15 minutes.
-
-If you didn't request this email, you can safely ignore it.
-  `.trim();
-
-  const transport = getTransporter();
-
-  if (!transport) {
+  if (!client) {
     // Development mode - log to console
     console.log('\n' + '='.repeat(60));
     console.log('📧 MAGIC LINK EMAIL (dev mode)');
@@ -98,13 +77,18 @@ If you didn't request this email, you can safely ignore it.
   }
 
   try {
-    await transport.sendMail({
-      from: process.env.EMAIL_FROM || 'noreply@bigtwo.game',
+    const { error } = await client.emails.send({
+      from: process.env.EMAIL_FROM || 'Big Two <noreply@bigtwo.dev>',
       to: email,
       subject: 'Log in to Big Two',
-      text,
       html
     });
+
+    if (error) {
+      console.error('[Email] Failed to send:', error);
+      return false;
+    }
+
     console.log(`[Email] Sent magic link to ${email}`);
     return true;
   } catch (error) {

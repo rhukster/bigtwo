@@ -1,6 +1,6 @@
 // AI player logic for Big Two
-import type { Card, PlayTypeResult } from '../../src/lib/game/types.ts';
-import { getPlayType, canBeat, sortHand, cardValue } from '../../src/lib/game/engine.ts';
+import type { Card, PlayTypeResult } from '../../src/lib/game/types.js';
+import { getPlayType, canBeat, sortHand, cardValue } from '../../src/lib/game/engine.js';
 
 type Difficulty = 'easy' | 'medium' | 'hard';
 

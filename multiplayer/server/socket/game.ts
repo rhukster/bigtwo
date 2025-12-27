@@ -12,10 +12,10 @@ import {
   hasUnusedStraightFlush,
   calculatePoints,
   sortHand
-} from '../../src/lib/game/engine.ts';
-import type { Card, PlayTypeResult, ServerGameState, ClientGameState } from '../../src/lib/game/types.ts';
-import { findAiPlay } from '../game/ai.ts';
-import { createGame, endGame, recordGameResult, updateLeaderboard } from '../db/index.ts';
+} from '../../src/lib/game/engine.js';
+import type { Card, PlayTypeResult, ServerGameState, ClientGameState } from '../../src/lib/game/types.js';
+import { findAiPlay } from '../game/ai.js';
+import { createGame, endGame, recordGameResult, updateLeaderboard } from '../db/index.js';
 
 interface LobbyUser {
   id: string;
@@ -172,7 +172,7 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
 
     // If first player is AI, trigger their turn
     if (room.players[starterIndex].isAi) {
-      setTimeout(() => processAiTurn(io, room, gameState), 1500);
+      setTimeout(() => processAiTurn(io, room, gameState, gameRooms), 1500);
     }
   });
 
@@ -259,7 +259,7 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
 
     console.log('[Game] Play validated, executing');
     // Execute play
-    executePlay(io, room, game, playerIndex, selectedCards, playType);
+    executePlay(io, room, game, gameRooms, playerIndex, selectedCards, playType);
   });
 
   // Pass turn
@@ -366,7 +366,7 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
 
     // If it was their turn, process AI turn
     if (game.currentPlayerIndex === playerIndex && !game.gameOver) {
-      setTimeout(() => processAiTurn(io, room, game), 1000);
+      setTimeout(() => processAiTurn(io, room, game, gameRooms), 1000);
     }
   });
 
@@ -462,6 +462,7 @@ function executePlay(
   io: Server,
   room: GameRoom,
   game: ServerGameState,
+  gameRooms: Map<string, GameRoom>,
   playerIndex: number,
   cards: Card[],
   playType: PlayTypeResult
@@ -496,7 +497,7 @@ function executePlay(
 
   // Check for win
   if (player.hand.length === 0) {
-    endGameWithWinner(io, room, game, playerIndex);
+    endGameWithWinner(io, room, game, playerIndex, gameRooms);
     return;
   }
 
@@ -550,11 +551,11 @@ function nextTurn(io: Server, room: GameRoom, game: ServerGameState) {
 
   // If next player is AI, trigger their turn
   if (game.players[game.currentPlayerIndex].isAi && !game.gameOver) {
-    setTimeout(() => processAiTurn(io, room, game), 1000);
+    setTimeout(() => processAiTurn(io, room, game, gameRooms), 1000);
   }
 }
 
-function processAiTurn(io: Server, room: GameRoom, game: ServerGameState) {
+function processAiTurn(io: Server, room: GameRoom, game: ServerGameState, gameRooms: Map<string, GameRoom>) {
   if (game.gameOver) return;
 
   const playerIndex = game.currentPlayerIndex;
@@ -576,13 +577,13 @@ function processAiTurn(io: Server, room: GameRoom, game: ServerGameState) {
 
   if (play) {
     const playType = getPlayType(play)!;
-    executePlay(io, room, game, playerIndex, play, playType);
+    executePlay(io, room, game, gameRooms, playerIndex, play, playType);
   } else {
     executePass(io, room, game, playerIndex);
   }
 }
 
-function endGameWithWinner(io: Server, room: GameRoom, game: ServerGameState, winnerIndex: number) {
+function endGameWithWinner(io: Server, room: GameRoom, game: ServerGameState, winnerIndex: number, gameRooms: Map<string, GameRoom>) {
   game.gameOver = true;
   game.winnerId = game.players[winnerIndex].id;
   game.endedAt = new Date();

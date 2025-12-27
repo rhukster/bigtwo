@@ -32,6 +32,7 @@
   import type { Card } from '$lib/game/types';
 
   let showCreateRoom = false;
+  let showRules = false;
   let roomName = '';
   let maxPlayers: 2 | 3 | 4 = 4;
   let fillWithAi = true;
@@ -162,7 +163,9 @@
       {#if $user?.isGuest}
         <span class="guest-badge">Guest</span>
       {/if}
-      <button class="btn btn-secondary btn-sm" on:click={handleLogout}>Logout</button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showRules = true}>Rules</button>
+      <a href="/leaderboard" class="btn btn-secondary btn-sm">Leaderboard</a>
+      <button class="btn btn-secondary btn-sm" on:click={handleLogout}>LOGOUT</button>
     </div>
   </header>
 
@@ -451,6 +454,70 @@
       />
       <button type="submit" class="btn btn-primary btn-sm">Send</button>
     </form>
+  </div>
+{/if}
+
+{#if showRules}
+  <div class="modal-overlay" on:click={() => showRules = false}>
+    <div class="rules-modal" on:click|stopPropagation>
+      <div class="rules-header">
+        <h2>🎴 Game Rules</h2>
+        <button class="rules-close" on:click={() => showRules = false}>&times;</button>
+      </div>
+      <div class="rules-content">
+        <section>
+          <h3>Objective</h3>
+          <p>Be the first player to empty your hand of all cards.</p>
+        </section>
+        <section>
+          <h3>Setup</h3>
+          <p>2–4 players (3 is optimal). Cards are dealt evenly from a standard 52-card deck.</p>
+        </section>
+        <section>
+          <h3>Card Rankings</h3>
+          <p><strong>Ranks</strong> (low → high): 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → J → Q → K → A → <em>2 (highest!)</em></p>
+          <p><strong>Suits</strong> (low → high): ♦ → ♣ → ♥ → ♠</p>
+          <p>When cards share the same rank, suit breaks the tie.</p>
+        </section>
+        <section>
+          <h3>Valid Combinations</h3>
+          <table class="rules-table">
+            <tbody>
+              <tr><td>Single</td><td>Any single card</td></tr>
+              <tr><td>Pair</td><td>Two cards of same rank</td></tr>
+              <tr><td>Triple</td><td>Three cards of same rank</td></tr>
+              <tr><td>Straight</td><td>5 consecutive ranks (any suits)</td></tr>
+              <tr><td>Flush</td><td>5 cards of same suit</td></tr>
+              <tr><td>Full House</td><td>Three-of-a-kind + pair</td></tr>
+              <tr><td>Four of a Kind</td><td>Four same rank + 1 kicker</td></tr>
+              <tr><td>Straight Flush</td><td>5 consecutive, same suit</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <section>
+          <h3>Gameplay</h3>
+          <ul>
+            <li>Player with <strong>3♦</strong> goes first and must include it</li>
+            <li>Beat the current play with the <strong>same type</strong> but <strong>higher value</strong>, or pass</li>
+            <li>You cannot pass if you have <strong>control</strong> (were the last to play)</li>
+            <li>When all other players pass, remaining player gains control and may lead any combo</li>
+            <li><em>First to empty their hand wins!</em></li>
+          </ul>
+        </section>
+        <section>
+          <h3>Scoring</h3>
+          <p><strong>Basic:</strong> Each card remaining = <em>1 point</em> paid to winner</p>
+          <p><strong>Penalty:</strong> 10+ cards remaining = <em>2 points per card</em></p>
+          <p class="scoring-multipliers"><strong>Multipliers (2x):</strong></p>
+          <ul>
+            <li>Unused 2s in your hand</li>
+            <li>Unused four-of-a-kinds in your hand</li>
+            <li>Unused straight flushes in your hand</li>
+            <li>Winner finishes with a 2, four-of-a-kind, or straight flush</li>
+          </ul>
+        </section>
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -1028,6 +1095,121 @@
   .pm-input input {
     flex: 1;
     font-size: 0.85rem;
+  }
+
+  /* Rules Modal */
+  .rules-modal {
+    background: var(--bg-dark);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(212,175,55,0.3);
+  }
+
+  .rules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .rules-header h2 {
+    margin: 0;
+    font-size: 1.3rem;
+  }
+
+  .rules-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .rules-close:hover {
+    color: white;
+  }
+
+  .rules-content {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .rules-content section {
+    margin-bottom: 20px;
+  }
+
+  .rules-content section:last-child {
+    margin-bottom: 0;
+  }
+
+  .rules-content h3 {
+    color: var(--gold);
+    font-size: 1rem;
+    margin: 0 0 8px;
+    font-family: inherit;
+  }
+
+  .rules-content p {
+    margin: 0 0 8px;
+    color: rgba(255,255,255,0.8);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .rules-content ul {
+    margin: 0;
+    padding-left: 20px;
+    color: rgba(255,255,255,0.8);
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+
+  .rules-content li {
+    margin-bottom: 6px;
+  }
+
+  .rules-content em {
+    color: var(--gold);
+    font-style: normal;
+  }
+
+  .rules-content .scoring-multipliers {
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+
+  .rules-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  .rules-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .rules-table td:first-child {
+    font-weight: 600;
+    color: white;
+    width: 140px;
+  }
+
+  .rules-table td:last-child {
+    color: rgba(255,255,255,0.7);
+  }
+
+  .rules-table tr:last-child td {
+    border-bottom: none;
   }
 
   @media (max-width: 900px) {

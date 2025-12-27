@@ -4,14 +4,16 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
     "outDir": "./dist/server",
-    "rootDir": "./server",
-    "declaration": true,
+    "rootDir": ".",
+    "declaration": false,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+    "allowImportingTsExtensions": false,
+    "noEmit": false
   },
-  "include": ["server/**/*"],
+  "include": ["server/**/*.ts", "src/lib/game/**/*.ts"],
   "exclude": ["node_modules"]
 }

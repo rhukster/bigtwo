@@ -10,8 +10,8 @@ import {
   getSession,
   deleteSession,
   getUserByUsername
-} from '../db/index.ts';
-import { sendMagicLinkEmail } from '../utils/email.ts';
+} from '../db/index.js';
+import { sendMagicLinkEmail } from '../utils/email.js';
 
 const router = Router();
 

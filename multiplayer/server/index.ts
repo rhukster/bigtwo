@@ -7,34 +7,37 @@ import session from 'express-session';
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 
 // Load environment variables
 config();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Import routes
-import authRoutes from './routes/auth.ts';
+import authRoutes from './routes/auth.js';
 
 // Import socket handlers
-import { setupLobbyHandlers } from './socket/lobby.ts';
-import { setupGameHandlers } from './socket/game.ts';
-import { setupChatHandlers } from './socket/chat.ts';
+import { setupLobbyHandlers } from './socket/lobby.js';
+import { setupGameHandlers } from './socket/game.js';
+import { setupChatHandlers } from './socket/chat.js';
 
 // Import database (initializes on import)
-import './db/index.ts';
+import './db/index.js';
+import { getLeaderboard, getUserStats } from './db/index.js';
 
 const app = express();
 const httpServer = createServer(app);
 
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 const PORT = parseInt(process.env.PORT || '3001');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
 
 // Socket.io setup
 const io = new Server(httpServer, {
   cors: {
-    origin: CLIENT_URL,
+    origin: isProduction ? APP_URL : true,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -42,7 +45,7 @@ const io = new Server(httpServer, {
 
 // Middleware
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: isProduction ? APP_URL : true,
   credentials: true
 }));
 app.use(express.json());
@@ -52,9 +55,10 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    sameSite: isProduction ? 'strict' : 'lax'
   }
 }));
 
@@ -65,6 +69,39 @@ app.use('/api/auth', authRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Leaderboard API
+app.get('/api/leaderboard', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const leaderboard = getLeaderboard(limit);
+    res.json({ leaderboard });
+  } catch (error) {
+    console.error('[API] Leaderboard error:', error);
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+});
+
+// Serve static files in production
+if (isProduction) {
+  const buildPath = join(__dirname, '../build');
+
+  if (existsSync(buildPath)) {
+    app.use(express.static(buildPath));
+
+    // SPA fallback - serve index.html for all non-API routes
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
+        return next();
+      }
+      res.sendFile(join(buildPath, 'index.html'));
+    });
+
+    console.log(`[Server] Serving static files from ${buildPath}`);
+  } else {
+    console.warn(`[Server] Build directory not found at ${buildPath}`);
+  }
+}
 
 // In-memory state for lobby and games
 interface LobbyUser {
@@ -199,8 +236,9 @@ httpServer.listen(PORT, () => {
 🎴 Big Two Multiplayer Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🌐 Server running on port ${PORT}
-🔗 Client URL: ${CLIENT_URL}
+🔗 App URL: ${APP_URL}
 📁 Data directory: ${join(__dirname, '../data')}
+🏗️  Mode: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   `);
 });
