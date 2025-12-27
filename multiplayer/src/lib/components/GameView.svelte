@@ -3,6 +3,7 @@
   import Card from './Card.svelte';
   import Hand from './Hand.svelte';
   import PlayZone from './PlayZone.svelte';
+  import Icon from './Icon.svelte';
   import { getPlayType, getPlayTypeName, canBeat, includesThreeOfDiamonds } from '../game/engine';
   import {
     roomMessages,
@@ -227,7 +228,7 @@
   <!-- Top bar with leave and chat buttons -->
   <div class="top-bar">
     <button class="leave-btn" onclick={() => showLeaveConfirm = true}>
-      ✕ Leave
+      <Icon name="x" size="sm" /> Leave
     </button>
     <div class="chat-toggles">
       <button
@@ -236,7 +237,7 @@
         class:has-unread={$unreadRoomMessages > 0}
         onclick={() => showRoomChat = !showRoomChat}
       >
-        💬 Chat {#if $unreadRoomMessages > 0}<span class="unread-badge">{$unreadRoomMessages}</span>{/if}
+        <Icon name="message-circle" size="sm" /> Chat {#if $unreadRoomMessages > 0}<span class="unread-badge">{$unreadRoomMessages}</span>{/if}
       </button>
       <button
         class="chat-toggle-btn"
@@ -250,7 +251,7 @@
           }
         }}
       >
-        ✉️ DM {#if totalUnread > 0}<span class="unread-badge">{totalUnread}</span>{/if}
+        <Icon name="mail" size="sm" /> DM {#if totalUnread > 0}<span class="unread-badge">{totalUnread}</span>{/if}
       </button>
     </div>
   </div>
@@ -348,8 +349,8 @@
 {#if showRoomChat}
   <div class="chat-panel room-chat">
     <div class="chat-panel-header">
-      <span class="chat-panel-title">💬 {roomName}</span>
-      <button class="chat-panel-close" onclick={() => showRoomChat = false}>✕</button>
+      <span class="chat-panel-title"><Icon name="message-circle" size="sm" /> {roomName}</span>
+      <button class="chat-panel-close" onclick={() => showRoomChat = false}><Icon name="x" size="sm" /></button>
     </div>
     <div class="chat-panel-messages">
       {#each $roomMessages as msg}
@@ -378,8 +379,8 @@
 {#if $activePMUser}
   <div class="chat-panel pm-chat">
     <div class="chat-panel-header">
-      <span class="chat-panel-title">✉️ {$activePMUser.name}</span>
-      <button class="chat-panel-close" onclick={closePMChat}>✕</button>
+      <span class="chat-panel-title"><Icon name="mail" size="sm" /> {$activePMUser.name}</span>
+      <button class="chat-panel-close" onclick={closePMChat}><Icon name="x" size="sm" /></button>
     </div>
     <div class="chat-panel-users">
       {#each $lobbyState.users.filter(u => u.id !== userId) as otherUser}
@@ -425,7 +426,7 @@
     <div class="game-end-modal">
       <div class="winner-announcement" class:is-you={isWinner}>
         {#if isWinner}
-          <div class="trophy">🏆</div>
+          <div class="trophy"><Icon name="trophy" size={64} /></div>
           <h2>You Won!</h2>
         {:else}
           <h2>{$gameEndResult.winnerName} Wins!</h2>
@@ -441,7 +442,11 @@
               {#if result.playerId === userId}(You){/if}
             </span>
             <span class="cards-left">
-              {result.cardsRemaining === 0 ? '🎉' : `${result.cardsRemaining} cards`}
+              {#if result.cardsRemaining === 0}
+                <Icon name="star" size="sm" />
+              {:else}
+                {result.cardsRemaining} cards
+              {/if}
             </span>
             <span class="points" class:positive={result.pointsDelta > 0} class:negative={result.pointsDelta < 0}>
               {result.pointsDelta > 0 ? '+' : ''}{result.pointsDelta}
@@ -1137,7 +1142,8 @@
   }
 
   .trophy {
-    font-size: 4rem;
+    color: var(--gold, #fbbf24);
+    filter: drop-shadow(0 4px 12px rgba(251, 191, 36, 0.4));
     animation: trophy-bounce 0.5s ease-in-out infinite alternate;
   }
 

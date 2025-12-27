@@ -29,6 +29,7 @@
     closePMChat
   } from '$lib/stores/socket';
   import GameView from '$lib/components/GameView.svelte';
+  import Icon from '$lib/components/Icon.svelte';
   import type { Card } from '$lib/game/types';
 
   let showCreateRoom = false;
@@ -152,20 +153,31 @@
 <div class="lobby-container">
   <header class="lobby-header">
     <div class="logo">
-      <span>🎴</span>
+      <div class="logo-icon">
+        <Icon name="playing-cards" size="lg" />
+      </div>
       <h1>Big Two</h1>
     </div>
     <div class="user-info">
       <span class="connection-status" class:connected={$connected}>
-        {$connected ? '🟢' : '🔴'}
+        <span class="status-dot" class:online={$connected}></span>
       </span>
       <span class="username">{$user?.username || 'Guest'}</span>
       {#if $user?.isGuest}
-        <span class="guest-badge">Guest</span>
+        <span class="badge badge-muted">Guest</span>
       {/if}
-      <button class="btn btn-secondary btn-sm" on:click={() => showRules = true}>Rules</button>
-      <a href="/leaderboard" class="btn btn-secondary btn-sm">Leaderboard</a>
-      <button class="btn btn-secondary btn-sm" on:click={handleLogout}>LOGOUT</button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showRules = true}>
+        <Icon name="book" size="sm" />
+        Rules
+      </button>
+      <a href="/leaderboard" class="btn btn-secondary btn-sm">
+        <Icon name="trophy" size="sm" />
+        Leaderboard
+      </a>
+      <button class="btn btn-secondary btn-sm" on:click={handleLogout}>
+        <Icon name="logout" size="sm" />
+        Logout
+      </button>
     </div>
   </header>
 
@@ -189,15 +201,25 @@
             <!-- Room View -->
             <div class="room-view">
               <div class="room-header">
-                <button class="back-btn" on:click={leaveRoom}>← Back to Lobby</button>
+                <button class="back-btn" on:click={leaveRoom}>
+                  <Icon name="arrow-left" size="sm" />
+                  Back to Lobby
+                </button>
                 <h2>{$currentRoom.name}</h2>
                 <div class="room-visibility-badge" class:private={$currentRoom.settings.isPrivate}>
-                  {$currentRoom.settings.isPrivate ? '🔒 Invite Only' : '🌐 Open'}
+                  {#if $currentRoom.settings.isPrivate}
+                    <Icon name="lock" size="sm" />
+                    Invite Only
+                  {:else}
+                    <Icon name="world" size="sm" />
+                    Open
+                  {/if}
                 </div>
                 <div class="room-code">
                   Code: <strong>{$currentRoom.code}</strong>
                   <button class="copy-btn" on:click={() => navigator.clipboard.writeText($currentRoom?.code || '')}>
-                    📋 Copy
+                    <Icon name="copy" size="sm" />
+                    Copy
                   </button>
                 </div>
               </div>
@@ -206,7 +228,11 @@
                 {#each $currentRoom.players as player, i}
                   <div class="player-slot" class:ready={player.isReady} class:host={player.isHost}>
                     <div class="player-avatar">
-                      {player.isAi ? '🤖' : '👤'}
+                      {#if player.isAi}
+                        <Icon name="robot" size="xl" />
+                      {:else}
+                        <Icon name="user" size="xl" />
+                      {/if}
                     </div>
                     <div class="player-name">
                       {player.name}
@@ -214,13 +240,13 @@
                     </div>
                     <div class="player-status">
                       {#if player.isAi}
-                        <span class="ready-text">Ready</span>
+                        <span class="ready-text"><Icon name="check" size="sm" /> Ready</span>
                       {:else if player.isReady}
-                        <span class="ready-text">Ready</span>
+                        <span class="ready-text"><Icon name="check" size="sm" /> Ready</span>
                       {:else if $readyCountdowns[player.id] !== undefined}
-                        <span class="countdown-text">Auto-ready in {$readyCountdowns[player.id]}s</span>
+                        <span class="countdown-text"><Icon name="clock" size="sm" /> Auto-ready in {$readyCountdowns[player.id]}s</span>
                       {:else}
-                        <span class="waiting-text">Waiting...</span>
+                        <span class="waiting-text"><Icon name="loader" size="sm" class="spin" /> Waiting...</span>
                       {/if}
                     </div>
                   </div>
@@ -228,11 +254,14 @@
 
                 {#each Array($currentRoom.settings.maxPlayers - $currentRoom.players.length) as _, i}
                   <div class="player-slot empty">
-                    <div class="player-avatar">❓</div>
+                    <div class="player-avatar empty-avatar">
+                      <Icon name="help" size="xl" />
+                    </div>
                     <div class="player-name">Empty Slot</div>
                     {#if $currentRoom.hostId === $user?.id}
                       <button class="btn btn-secondary btn-sm" on:click={() => addAi($currentRoom?.id || '')}>
-                        + Add AI
+                        <Icon name="plus" size="sm" />
+                        Add AI
                       </button>
                     {/if}
                   </div>
@@ -242,10 +271,11 @@
               <div class="room-actions">
                 {#if $currentRoom.hostId === $user?.id}
                   <button
-                    class="btn btn-primary"
+                    class="btn btn-gold"
                     on:click={() => startGame($currentRoom?.id || '')}
                     disabled={$currentRoom.players.length < 2}
                   >
+                    <Icon name="play" size="sm" />
                     Start Game
                   </button>
                 {:else}
@@ -253,7 +283,13 @@
                     class="btn btn-success"
                     on:click={() => toggleReady($currentRoom?.id || '', !$currentRoom?.players.find(p => p.id === $user?.id)?.isReady)}
                   >
-                    {$currentRoom.players.find(p => p.id === $user?.id)?.isReady ? 'Not Ready' : 'Ready'}
+                    {#if $currentRoom.players.find(p => p.id === $user?.id)?.isReady}
+                      <Icon name="x" size="sm" />
+                      Not Ready
+                    {:else}
+                      <Icon name="check" size="sm" />
+                      Ready
+                    {/if}
                   </button>
                 {/if}
               </div>
@@ -262,9 +298,10 @@
             <!-- Lobby Rooms List -->
             <div class="rooms-section">
               <div class="section-header">
-                <h2>🎮 Game Rooms</h2>
+                <h2><Icon name="device-gamepad-2" size="lg" /> Game Rooms</h2>
                 <button class="btn btn-primary" on:click={() => showCreateRoom = true}>
-                  + Create Room
+                  <Icon name="plus" size="sm" />
+                  Create Room
                 </button>
               </div>
 
@@ -275,25 +312,44 @@
                   placeholder="Enter room code..."
                   maxlength="6"
                 />
-                <button class="btn btn-secondary" on:click={handleJoinByCode}>Join</button>
+                <button class="btn btn-secondary" on:click={handleJoinByCode}>
+                  <Icon name="door-enter" size="sm" />
+                  Join
+                </button>
               </div>
 
               <div class="rooms-list">
                 {#if $lobbyState.rooms.length === 0}
-                  <p class="text-muted text-center">No rooms available. Create one!</p>
+                  <div class="empty-state">
+                    <Icon name="device-gamepad-2" size={48} class="text-muted" />
+                    <p>No rooms available</p>
+                    <p class="subtext">Create one to get started!</p>
+                  </div>
                 {:else}
                   {#each $lobbyState.rooms as room}
                     <div class="room-card">
                       <div class="room-info">
                         <h3>{room.name}</h3>
-                        <p>{room.players.length}/{room.settings.maxPlayers} players</p>
+                        <p>
+                          <Icon name="users" size="sm" />
+                          {room.players.length}/{room.settings.maxPlayers} players
+                        </p>
                       </div>
                       <button
                         class="btn btn-secondary"
                         on:click={() => joinRoom(room.id)}
                         disabled={room.status !== 'waiting'}
                       >
-                        {room.status === 'waiting' ? 'Join' : room.status === 'finished' ? 'Finished' : 'In Game'}
+                        {#if room.status === 'waiting'}
+                          <Icon name="door-enter" size="sm" />
+                          Join
+                        {:else if room.status === 'finished'}
+                          <Icon name="circle-check" size="sm" />
+                          Finished
+                        {:else}
+                          <Icon name="play" size="sm" />
+                          In Game
+                        {/if}
                       </button>
                     </div>
                   {/each}
@@ -304,8 +360,11 @@
         </div>
 
         <div class="sidebar">
-          <div class="online-users">
-            <h3>👥 Online ({$lobbyState.users.length})</h3>
+          <div class="panel online-users">
+            <div class="panel-header">
+              <Icon name="users" size="sm" />
+              <h3>Online ({$lobbyState.users.length})</h3>
+            </div>
             <ul>
               {#each $lobbyState.users as onlineUser}
                 <li
@@ -315,26 +374,30 @@
                   on:click={() => handleClickUser(onlineUser.id, onlineUser.name)}
                 >
                   <span class="user-name-row">
+                    <span class="status-dot" class:online={onlineUser.status !== 'in-game'} class:busy={onlineUser.status === 'in-game'}></span>
                     {onlineUser.name}
                     {#if onlineUser.id === $user?.id}
                       <span class="you-badge">(you)</span>
                     {/if}
                     {#if $unreadPMs.has(onlineUser.id)}
-                      <span class="unread-dot"></span>
+                      <span class="unread-indicator"></span>
                     {/if}
                   </span>
                   {#if onlineUser.status === 'in-game'}
-                    <span class="status-badge">In Game</span>
+                    <span class="badge badge-muted">In Game</span>
                   {:else if onlineUser.id !== $user?.id}
-                    <span class="pm-hint">💬</span>
+                    <Icon name="message" size="sm" class="pm-hint" />
                   {/if}
                 </li>
               {/each}
             </ul>
           </div>
 
-          <div class="chat-section">
-            <h3>💬 {$currentRoom ? `${$currentRoom.name} Chat` : 'Lobby Chat'}</h3>
+          <div class="panel chat-section">
+            <div class="panel-header">
+              <Icon name="message-circle" size="sm" />
+              <h3>{$currentRoom ? `${$currentRoom.name} Chat` : 'Lobby Chat'}</h3>
+            </div>
             <div class="chat-messages">
               {#each $lobbyMessages as msg}
                 <div class="chat-message" class:system={msg.type === 'system'}>
@@ -350,7 +413,9 @@
                 placeholder="Type a message..."
                 maxlength="500"
               />
-              <button type="submit" class="btn btn-primary btn-sm">Send</button>
+              <button type="submit" class="btn btn-primary btn-sm">
+                <Icon name="send" size="sm" />
+              </button>
             </form>
           </div>
         </div>
@@ -387,7 +452,8 @@
             class:active={!isPrivate}
             on:click={() => isPrivate = false}
           >
-            🌐 Open
+            <Icon name="world" size="lg" />
+            Open
             <span class="visibility-desc">Anyone can join</span>
           </button>
           <button
@@ -396,13 +462,14 @@
             class:active={isPrivate}
             on:click={() => isPrivate = true}
           >
-            🔒 Invite Only
+            <Icon name="lock" size="lg" />
+            Invite Only
             <span class="visibility-desc">Requires room code</span>
           </button>
         </div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group checkbox-group">
         <label>
           <input type="checkbox" bind:checked={fillWithAi} />
           Fill empty slots with AI
@@ -422,7 +489,10 @@
 
       <div class="modal-actions">
         <button class="btn btn-secondary" on:click={() => showCreateRoom = false}>Cancel</button>
-        <button class="btn btn-primary" on:click={handleCreateRoom}>Create</button>
+        <button class="btn btn-primary" on:click={handleCreateRoom}>
+          <Icon name="plus" size="sm" />
+          Create
+        </button>
       </div>
     </div>
   </div>
@@ -431,8 +501,8 @@
 {#if $activePMUser && !$gameState}
   <div class="pm-panel">
     <div class="pm-header">
-      <span class="pm-title">💬 {$activePMUser.name}</span>
-      <button class="pm-close" on:click={closePMChat}>✕</button>
+      <span class="pm-title"><Icon name="message" size="sm" /> {$activePMUser.name}</span>
+      <button class="pm-close" on:click={closePMChat}><Icon name="x" size="sm" /></button>
     </div>
     <div class="pm-messages">
       {#each $privateMessages[$activePMUser.id] || [] as msg}
@@ -452,7 +522,7 @@
         placeholder="Type a message..."
         maxlength="500"
       />
-      <button type="submit" class="btn btn-primary btn-sm">Send</button>
+      <button type="submit" class="btn btn-primary btn-sm"><Icon name="send" size="sm" /></button>
     </form>
   </div>
 {/if}
@@ -461,8 +531,8 @@
   <div class="modal-overlay" on:click={() => showRules = false}>
     <div class="rules-modal" on:click|stopPropagation>
       <div class="rules-header">
-        <h2>🎴 Game Rules</h2>
-        <button class="rules-close" on:click={() => showRules = false}>&times;</button>
+        <h2><Icon name="book" size="lg" /> Game Rules</h2>
+        <button class="rules-close" on:click={() => showRules = false}><Icon name="x" size="lg" /></button>
       </div>
       <div class="rules-content">
         <section>
@@ -471,12 +541,12 @@
         </section>
         <section>
           <h3>Setup</h3>
-          <p>2–4 players (3 is optimal). Cards are dealt evenly from a standard 52-card deck.</p>
+          <p>2-4 players (3 is optimal). Cards are dealt evenly from a standard 52-card deck.</p>
         </section>
         <section>
           <h3>Card Rankings</h3>
-          <p><strong>Ranks</strong> (low → high): 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → J → Q → K → A → <em>2 (highest!)</em></p>
-          <p><strong>Suits</strong> (low → high): ♦ → ♣ → ♥ → ♠</p>
+          <p><strong>Ranks</strong> (low to high): 3 - 4 - 5 - 6 - 7 - 8 - 9 - 10 - J - Q - K - A - <em>2 (highest!)</em></p>
+          <p><strong>Suits</strong> (low to high): Diamonds - Clubs - Hearts - Spades</p>
           <p>When cards share the same rank, suit breaks the tie.</p>
         </section>
         <section>
@@ -497,7 +567,7 @@
         <section>
           <h3>Gameplay</h3>
           <ul>
-            <li>Player with <strong>3♦</strong> goes first and must include it</li>
+            <li>Player with <strong>3 of Diamonds</strong> goes first and must include it</li>
             <li>Beat the current play with the <strong>same type</strong> but <strong>higher value</strong>, or pass</li>
             <li>You cannot pass if you have <strong>control</strong> (were the last to play)</li>
             <li>When all other players pass, remaining player gains control and may lead any combo</li>
@@ -524,30 +594,38 @@
 <style>
   .lobby-container {
     min-height: 100vh;
-    background: var(--bg-darker);
+    background: var(--bg-darkest);
   }
 
   .lobby-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 24px;
+    padding: 12px 24px;
     background: var(--bg-dark);
-    border-bottom: 1px solid rgba(212,175,55,0.2);
+    border-bottom: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-md);
   }
 
   .logo {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
   }
 
-  .logo span {
-    font-size: 1.8rem;
+  .logo-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    border-radius: 10px;
+    color: white;
   }
 
   .logo h1 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     margin: 0;
   }
 
@@ -557,27 +635,19 @@
     gap: 12px;
   }
 
+  .connection-status {
+    display: flex;
+    align-items: center;
+  }
+
   .username {
     color: var(--gold);
     font-weight: 600;
   }
 
-  .guest-badge {
-    background: rgba(255,255,255,0.1);
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    color: rgba(255,255,255,0.6);
-  }
-
-  .btn-sm {
-    padding: 6px 12px;
-    font-size: 0.8rem;
-  }
-
   .lobby-main {
     padding: 24px;
-    height: calc(100vh - 70px); /* Full viewport minus header */
+    height: calc(100vh - 70px);
     overflow: hidden;
   }
 
@@ -594,17 +664,21 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
 
   .section-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     margin: 0;
+    font-size: 1.25rem;
   }
 
   .join-by-code {
     display: flex;
     gap: 8px;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
 
   .join-by-code input {
@@ -627,27 +701,57 @@
     gap: 12px;
   }
 
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .empty-state p {
+    margin: 16px 0 0;
+    font-size: 1.1rem;
+  }
+
+  .empty-state .subtext {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    margin-top: 4px;
+  }
+
   .room-card {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px;
+    padding: 16px 20px;
     background: var(--bg-dark);
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    transition: all 0.2s;
+  }
+
+  .room-card:hover {
+    border-color: var(--border-light);
+    box-shadow: var(--shadow-md);
   }
 
   .room-card h3 {
     margin: 0 0 4px;
     font-size: 1rem;
-    color: white;
-    font-family: inherit;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
   }
 
   .room-card p {
     margin: 0;
-    color: rgba(255,255,255,0.5);
+    color: var(--text-muted);
     font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .sidebar {
@@ -655,27 +759,13 @@
     flex-direction: column;
     gap: 16px;
     height: 100%;
-    min-height: 0; /* Allow flex children to shrink */
-  }
-
-  .online-users, .chat-section {
-    background: var(--bg-dark);
-    border-radius: 8px;
-    padding: 16px;
-    border: 1px solid rgba(255,255,255,0.1);
+    min-height: 0;
   }
 
   .online-users {
-    flex-shrink: 0; /* Don't shrink online users */
+    flex-shrink: 0;
     max-height: 200px;
     overflow-y: auto;
-  }
-
-  .online-users h3, .chat-section h3 {
-    margin: 0 0 12px;
-    font-size: 0.9rem;
-    color: var(--gold);
-    font-family: inherit;
   }
 
   .online-users ul {
@@ -685,30 +775,68 @@
   }
 
   .online-users li {
-    padding: 6px 0;
-    color: rgba(255,255,255,0.8);
-    font-size: 0.9rem;
+    padding: 8px 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-radius: 6px;
+    transition: background 0.2s;
   }
 
   .online-users li.in-game {
     opacity: 0.5;
   }
 
-  .status-badge {
+  .online-users li.clickable {
+    cursor: pointer;
+    padding: 8px;
+    margin: 0 -8px;
+  }
+
+  .online-users li.clickable:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .online-users li.has-unread {
+    background: var(--accent-primary-glow);
+  }
+
+  .user-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .you-badge {
     font-size: 0.7rem;
-    padding: 2px 6px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 4px;
+    opacity: 0.5;
+  }
+
+  .unread-indicator {
+    width: 8px;
+    height: 8px;
+    background: var(--accent-primary);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+
+  :global(.pm-hint) {
+    opacity: 0;
+    transition: opacity 0.2s;
+    color: var(--text-muted);
+  }
+
+  .online-users li.clickable:hover :global(.pm-hint) {
+    opacity: 0.6;
   }
 
   .chat-section {
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-height: 0; /* Allow flex to shrink below content size */
+    min-height: 0;
     overflow: hidden;
   }
 
@@ -717,7 +845,7 @@
     overflow-y: auto;
     margin-bottom: 12px;
     font-size: 0.85rem;
-    min-height: 0; /* Enable scrolling within flex */
+    min-height: 0;
   }
 
   .chat-message {
@@ -725,13 +853,13 @@
   }
 
   .chat-sender {
-    color: var(--gold);
+    color: var(--accent-primary);
     font-weight: 500;
     margin-right: 6px;
   }
 
   .chat-content {
-    color: rgba(255,255,255,0.8);
+    color: var(--text-secondary);
   }
 
   .chat-input {
@@ -755,57 +883,76 @@
   }
 
   .room-header h2 {
-    margin: 16px 0 8px;
+    margin: 16px 0 12px;
   }
 
   .room-code {
-    color: rgba(255,255,255,0.6);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
   }
 
   .room-code strong {
     color: var(--gold);
     font-size: 1.2rem;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
+    font-family: 'Orbitron', monospace;
   }
 
   .room-visibility-badge {
-    display: inline-block;
-    padding: 4px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
     border-radius: 20px;
     font-size: 0.8rem;
-    background: rgba(76, 175, 80, 0.2);
-    color: #4CAF50;
+    font-weight: 500;
+    background: var(--success-glow);
+    color: var(--success);
     margin-bottom: 8px;
   }
 
   .room-visibility-badge.private {
-    background: rgba(255, 152, 0, 0.2);
-    color: #ff9800;
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning);
   }
 
   .copy-btn {
-    background: none;
-    border: 1px solid rgba(255,255,255,0.3);
-    color: rgba(255,255,255,0.6);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 0.8rem;
-    padding: 4px 8px;
-    border-radius: 4px;
-    margin-left: 8px;
+    padding: 4px 10px;
+    border-radius: 6px;
     transition: all 0.2s;
   }
 
   .copy-btn:hover {
-    background: rgba(255,255,255,0.1);
-    color: white;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
   }
 
   .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     background: none;
     border: none;
-    color: rgba(255,255,255,0.6);
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 0.9rem;
+    transition: color 0.2s;
+  }
+
+  .back-btn:hover {
+    color: var(--text-primary);
   }
 
   .players-grid {
@@ -817,19 +964,21 @@
 
   .player-slot {
     background: var(--bg-dark);
-    border-radius: 12px;
-    padding: 20px;
+    border-radius: 16px;
+    padding: 24px;
     text-align: center;
-    border: 2px solid rgba(255,255,255,0.1);
-    transition: border-color 0.2s;
+    border: 2px solid var(--border-subtle);
+    transition: all 0.3s;
   }
 
   .player-slot.ready {
-    border-color: #4CAF50;
+    border-color: var(--success);
+    box-shadow: 0 0 15px var(--success-glow);
   }
 
   .player-slot.host {
     border-color: var(--gold);
+    box-shadow: 0 0 15px var(--gold-glow);
   }
 
   .player-slot.empty {
@@ -837,41 +986,52 @@
   }
 
   .player-avatar {
-    font-size: 2.5rem;
-    margin-bottom: 8px;
+    color: var(--accent-primary);
+    margin-bottom: 12px;
+  }
+
+  .player-avatar.empty-avatar {
+    color: var(--text-muted);
   }
 
   .player-name {
     font-weight: 600;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
   }
 
   .host-badge {
     background: var(--gold);
-    color: #1a1a1a;
-    padding: 2px 6px;
+    color: var(--bg-darkest);
+    padding: 2px 8px;
     border-radius: 4px;
     font-size: 0.7rem;
     margin-left: 6px;
   }
 
   .ready-text {
-    color: #4CAF50;
+    color: var(--success);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
   }
 
   .waiting-text {
-    color: rgba(255,255,255,0.4);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
   }
 
   .countdown-text {
-    color: #ff9800;
+    color: var(--warning);
     font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     animation: pulse 1s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
   }
 
   .room-actions {
@@ -882,7 +1042,8 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -892,26 +1053,29 @@
   .modal {
     background: var(--bg-dark);
     border-radius: 16px;
-    padding: 24px;
+    padding: 28px;
     width: 90%;
-    max-width: 400px;
-    border: 1px solid rgba(212,175,55,0.3);
+    max-width: 420px;
+    border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-lg);
   }
 
   .modal h2 {
-    margin: 0 0 20px;
+    margin: 0 0 24px;
     text-align: center;
+    font-size: 1.25rem;
   }
 
   .form-group {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
 
   .form-group label {
     display: block;
-    margin-bottom: 6px;
-    color: rgba(255,255,255,0.7);
-    font-size: 0.9rem;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
   }
 
   .form-group input[type="text"],
@@ -919,20 +1083,23 @@
     width: 100%;
   }
 
-  .form-group input[type="checkbox"] {
-    margin-right: 8px;
+  .checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
   }
 
   .modal-actions {
     display: flex;
     gap: 12px;
     justify-content: flex-end;
-    margin-top: 24px;
+    margin-top: 28px;
   }
 
   .visibility-options {
     display: flex;
-    gap: 8px;
+    gap: 12px;
   }
 
   .visibility-btn {
@@ -940,72 +1107,29 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 12px;
+    padding: 16px;
     background: var(--bg-darker);
-    border: 2px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
+    border: 2px solid var(--border-subtle);
+    border-radius: 12px;
     cursor: pointer;
-    color: rgba(255,255,255,0.7);
+    color: var(--text-muted);
     transition: all 0.2s;
     font-size: 0.9rem;
   }
 
   .visibility-btn:hover {
-    border-color: rgba(255,255,255,0.3);
+    border-color: var(--border-light);
   }
 
   .visibility-btn.active {
-    border-color: var(--gold);
-    background: rgba(212,175,55,0.1);
-    color: white;
+    border-color: var(--accent-primary);
+    background: var(--accent-primary-glow);
+    color: var(--text-primary);
   }
 
   .visibility-desc {
     font-size: 0.7rem;
-    margin-top: 4px;
-    opacity: 0.6;
-  }
-
-  /* Clickable users for PM */
-  .online-users li.clickable {
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .online-users li.clickable:hover {
-    background: rgba(255,255,255,0.1);
-  }
-
-  .online-users li.has-unread {
-    background: rgba(212,175,55,0.1);
-  }
-
-  .user-name-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .you-badge {
-    font-size: 0.7rem;
-    opacity: 0.5;
-  }
-
-  .unread-dot {
-    width: 8px;
-    height: 8px;
-    background: var(--gold);
-    border-radius: 50%;
-    animation: pulse 1s infinite;
-  }
-
-  .pm-hint {
-    font-size: 0.75rem;
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-
-  .online-users li.clickable:hover .pm-hint {
+    margin-top: 6px;
     opacity: 0.6;
   }
 
@@ -1017,11 +1141,11 @@
     width: 320px;
     max-height: 400px;
     background: var(--bg-dark);
-    border-radius: 12px;
-    border: 1px solid rgba(212,175,55,0.3);
+    border-radius: 16px;
+    border: 1px solid var(--border-light);
     display: flex;
     flex-direction: column;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    box-shadow: var(--shadow-lg);
     z-index: 50;
   }
 
@@ -1029,32 +1153,35 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .pm-title {
     font-weight: 600;
-    color: var(--gold);
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .pm-close {
     background: none;
     border: none;
-    color: rgba(255,255,255,0.5);
+    color: var(--text-muted);
     cursor: pointer;
-    font-size: 1rem;
     padding: 4px;
+    transition: color 0.2s;
   }
 
   .pm-close:hover {
-    color: white;
+    color: var(--text-primary);
   }
 
   .pm-messages {
     flex: 1;
     overflow-y: auto;
-    padding: 12px 16px;
+    padding: 14px 18px;
     max-height: 280px;
     min-height: 100px;
   }
@@ -1065,21 +1192,21 @@
   }
 
   .pm-message.sent .pm-sender {
-    color: #4CAF50;
+    color: var(--success);
   }
 
   .pm-sender {
-    color: var(--gold);
+    color: var(--accent-primary);
     font-weight: 500;
     margin-right: 6px;
   }
 
   .pm-content {
-    color: rgba(255,255,255,0.8);
+    color: var(--text-secondary);
   }
 
   .pm-empty {
-    color: rgba(255,255,255,0.4);
+    color: var(--text-muted);
     font-size: 0.85rem;
     text-align: center;
     margin: 20px 0;
@@ -1088,8 +1215,8 @@
   .pm-input {
     display: flex;
     gap: 8px;
-    padding: 12px;
-    border-top: 1px solid rgba(255,255,255,0.1);
+    padding: 14px;
+    border-top: 1px solid var(--border-subtle);
   }
 
   .pm-input input {
@@ -1107,34 +1234,37 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    border: 1px solid rgba(212,175,55,0.3);
+    border: 1px solid var(--border-light);
+    box-shadow: var(--shadow-lg);
   }
 
   .rules-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 24px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .rules-header h2 {
     margin: 0;
-    font-size: 1.3rem;
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
   .rules-close {
     background: none;
     border: none;
-    color: rgba(255,255,255,0.5);
-    font-size: 1.5rem;
+    color: var(--text-muted);
     cursor: pointer;
-    padding: 0;
-    line-height: 1;
+    padding: 4px;
+    transition: color 0.2s;
   }
 
   .rules-close:hover {
-    color: white;
+    color: var(--text-primary);
   }
 
   .rules-content {
@@ -1144,7 +1274,7 @@
   }
 
   .rules-content section {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
   }
 
   .rules-content section:last-child {
@@ -1152,25 +1282,25 @@
   }
 
   .rules-content h3 {
-    color: var(--gold);
+    color: var(--accent-primary);
     font-size: 1rem;
-    margin: 0 0 8px;
-    font-family: inherit;
+    margin: 0 0 10px;
+    font-family: 'Inter', sans-serif;
   }
 
   .rules-content p {
     margin: 0 0 8px;
-    color: rgba(255,255,255,0.8);
+    color: var(--text-secondary);
     font-size: 0.9rem;
-    line-height: 1.5;
+    line-height: 1.6;
   }
 
   .rules-content ul {
     margin: 0;
     padding-left: 20px;
-    color: rgba(255,255,255,0.8);
+    color: var(--text-secondary);
     font-size: 0.9rem;
-    line-height: 1.6;
+    line-height: 1.7;
   }
 
   .rules-content li {
@@ -1184,7 +1314,7 @@
 
   .rules-content .scoring-multipliers {
     margin-top: 12px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
   }
 
   .rules-table {
@@ -1194,22 +1324,32 @@
   }
 
   .rules-table td {
-    padding: 8px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .rules-table td:first-child {
     font-weight: 600;
-    color: white;
+    color: var(--text-primary);
     width: 140px;
   }
 
   .rules-table td:last-child {
-    color: rgba(255,255,255,0.7);
+    color: var(--text-secondary);
   }
 
   .rules-table tr:last-child td {
     border-bottom: none;
+  }
+
+  /* Spin animation */
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   @media (max-width: 900px) {
@@ -1219,6 +1359,16 @@
 
     .players-grid {
       grid-template-columns: 1fr;
+    }
+
+    .lobby-header {
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .user-info {
+      flex-wrap: wrap;
+      justify-content: center;
     }
   }
 </style>

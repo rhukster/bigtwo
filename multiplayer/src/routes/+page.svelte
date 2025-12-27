@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { user, connectSocket } from '$lib/stores/socket';
+  import Icon from '$lib/components/Icon.svelte';
 
   let mode: 'welcome' | 'login' | 'register' | 'guest' = 'welcome';
   let email = '';
@@ -125,24 +126,36 @@
 </script>
 
 <svelte:head>
-  <title>Big Two - Multiplayer</title>
+  <title>Big Two - Multiplayer Chinese Poker</title>
 </svelte:head>
 
 <div class="container">
+  <!-- Background effects -->
+  <div class="bg-effects">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="glow-orb orb-3"></div>
+  </div>
+
   <div class="hero">
     <div class="logo">
-      <span class="logo-icon">🎴</span>
+      <div class="logo-icon">
+        <Icon name="playing-cards" size={48} />
+      </div>
       <h1>Big Two</h1>
     </div>
     <p class="tagline">Multiplayer Chinese Poker</p>
   </div>
 
-  <div class="card-container auth-card">
+  <div class="card-container auth-card animate-slide-up">
     {#if message}
       <div class="success-message">
-        <span>✉️</span>
+        <div class="success-icon">
+          <Icon name="mail-check" size={48} />
+        </div>
         <p>{message}</p>
         <button class="btn btn-secondary" on:click={() => { message = ''; mode = 'welcome'; }}>
+          <Icon name="arrow-left" size="sm" />
           Back
         </button>
       </div>
@@ -152,24 +165,30 @@
 
       <div class="auth-options">
         <button class="btn btn-primary w-full" on:click={() => mode = 'login'}>
-          🔑 Login with Email
+          <Icon name="key" size="sm" />
+          Login with Email
         </button>
         <button class="btn btn-secondary w-full" on:click={() => mode = 'register'}>
-          ✨ Create Account
+          <Icon name="sparkles" size="sm" />
+          Create Account
         </button>
         <div class="divider">
           <span>or</span>
         </div>
         <button class="btn btn-secondary w-full" on:click={() => mode = 'guest'}>
-          👤 Play as Guest
+          <Icon name="user" size="sm" />
+          Play as Guest
         </button>
       </div>
     {:else if mode === 'login'}
-      <button class="back-btn" on:click={() => mode = 'welcome'}>← Back</button>
+      <button class="back-btn" on:click={() => mode = 'welcome'}>
+        <Icon name="chevron-left" size="sm" />
+        Back
+      </button>
       <h2>Login</h2>
       <p class="text-muted mb-3">We'll send you a magic link</p>
 
-      {#if error}<p class="error">{error}</p>{/if}
+      {#if error}<p class="error"><Icon name="alert-circle" size="sm" /> {error}</p>{/if}
 
       <form on:submit|preventDefault={handleLogin}>
         <input
@@ -180,15 +199,24 @@
           class="w-full mb-2"
         />
         <button class="btn btn-primary w-full" disabled={loading}>
-          {loading ? 'Sending...' : 'Send Login Link'}
+          {#if loading}
+            <Icon name="loader" size="sm" class="spin" />
+            Sending...
+          {:else}
+            <Icon name="send" size="sm" />
+            Send Login Link
+          {/if}
         </button>
       </form>
     {:else if mode === 'register'}
-      <button class="back-btn" on:click={() => mode = 'welcome'}>← Back</button>
+      <button class="back-btn" on:click={() => mode = 'welcome'}>
+        <Icon name="chevron-left" size="sm" />
+        Back
+      </button>
       <h2>Create Account</h2>
       <p class="text-muted mb-3">Join the game!</p>
 
-      {#if error}<p class="error">{error}</p>{/if}
+      {#if error}<p class="error"><Icon name="alert-circle" size="sm" /> {error}</p>{/if}
 
       <form on:submit|preventDefault={handleRegister}>
         <input
@@ -208,15 +236,24 @@
           class="w-full mb-2"
         />
         <button class="btn btn-primary w-full" disabled={loading}>
-          {loading ? 'Creating...' : 'Create Account'}
+          {#if loading}
+            <Icon name="loader" size="sm" class="spin" />
+            Creating...
+          {:else}
+            <Icon name="user-plus" size="sm" />
+            Create Account
+          {/if}
         </button>
       </form>
     {:else if mode === 'guest'}
-      <button class="back-btn" on:click={() => mode = 'welcome'}>← Back</button>
+      <button class="back-btn" on:click={() => mode = 'welcome'}>
+        <Icon name="chevron-left" size="sm" />
+        Back
+      </button>
       <h2>Play as Guest</h2>
       <p class="text-muted mb-3">No account needed!</p>
 
-      {#if error}<p class="error">{error}</p>{/if}
+      {#if error}<p class="error"><Icon name="alert-circle" size="sm" /> {error}</p>{/if}
 
       <form on:submit|preventDefault={handleGuest}>
         <input
@@ -228,11 +265,18 @@
           minlength="2"
           maxlength="20"
         />
-        <button class="btn btn-primary w-full" disabled={loading}>
-          {loading ? 'Joining...' : 'Join Lobby'}
+        <button class="btn btn-gold w-full" disabled={loading}>
+          {#if loading}
+            <Icon name="loader" size="sm" class="spin" />
+            Joining...
+          {:else}
+            <Icon name="door-enter" size="sm" />
+            Join Lobby
+          {/if}
         </button>
       </form>
-      <p class="text-muted mt-2" style="font-size: 0.85rem;">
+      <p class="text-muted mt-2 guest-note">
+        <Icon name="info-circle" size="sm" />
         Guest stats won't be saved to the leaderboard
       </p>
     {/if}
@@ -247,47 +291,117 @@
     align-items: center;
     justify-content: center;
     padding: 20px;
+    position: relative;
+    overflow: hidden;
     background:
-      radial-gradient(ellipse at center, var(--felt-light) 0%, var(--felt) 40%, var(--felt-dark) 100%);
+      radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 40%),
+      radial-gradient(ellipse at 20% 60%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+      linear-gradient(180deg, var(--bg-darkest) 0%, var(--bg-darker) 100%);
+  }
+
+  /* Background glow effects */
+  .bg-effects {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .glow-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.4;
+    animation: float 20s ease-in-out infinite;
+  }
+
+  .orb-1 {
+    width: 400px;
+    height: 400px;
+    background: var(--accent-primary);
+    top: -100px;
+    left: -100px;
+    animation-delay: 0s;
+  }
+
+  .orb-2 {
+    width: 300px;
+    height: 300px;
+    background: var(--accent-secondary);
+    bottom: -50px;
+    right: -50px;
+    animation-delay: -7s;
+  }
+
+  .orb-3 {
+    width: 250px;
+    height: 250px;
+    background: var(--gold);
+    top: 50%;
+    left: 60%;
+    opacity: 0.2;
+    animation-delay: -14s;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    25% { transform: translate(30px, -30px) scale(1.1); }
+    50% { transform: translate(-20px, 20px) scale(0.95); }
+    75% { transform: translate(40px, 10px) scale(1.05); }
   }
 
   .hero {
     text-align: center;
     margin-bottom: 40px;
+    position: relative;
+    z-index: 1;
   }
 
   .logo {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 15px;
-    margin-bottom: 10px;
+    gap: 16px;
+    margin-bottom: 12px;
   }
 
   .logo-icon {
-    font-size: 3rem;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    border-radius: 16px;
+    color: white;
+    box-shadow:
+      0 8px 32px rgba(99, 102, 241, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
   }
 
   .logo h1 {
     font-size: 3rem;
-    text-shadow: 0 4px 8px rgba(0,0,0,0.5), 0 0 40px rgba(212,175,55,0.3);
-    letter-spacing: 3px;
+    letter-spacing: 2px;
   }
 
   .tagline {
-    color: rgba(255,255,255,0.7);
+    color: var(--text-secondary);
     font-size: 1.1rem;
+    font-weight: 500;
   }
 
   .auth-card {
     width: 100%;
     max-width: 400px;
+    position: relative;
+    z-index: 1;
   }
 
   .auth-card h2 {
     text-align: center;
     margin-bottom: 8px;
+    font-size: 1.25rem;
   }
 
   .auth-options {
@@ -296,43 +410,35 @@
     gap: 12px;
   }
 
-  .divider {
+  .back-btn {
     display: flex;
     align-items: center;
-    gap: 16px;
-    color: rgba(255,255,255,0.4);
-    margin: 8px 0;
-  }
-
-  .divider::before,
-  .divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: rgba(255,255,255,0.2);
-  }
-
-  .back-btn {
+    gap: 4px;
     background: none;
     border: none;
-    color: rgba(255,255,255,0.6);
+    color: var(--text-muted);
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     margin-bottom: 16px;
     padding: 0;
+    transition: color 0.2s;
   }
 
   .back-btn:hover {
-    color: white;
+    color: var(--text-primary);
   }
 
   .error {
-    color: #ef5350;
-    background: rgba(239,83,80,0.1);
-    padding: 10px 16px;
-    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--danger);
+    background: var(--danger-glow);
+    padding: 12px 16px;
+    border-radius: 10px;
     margin-bottom: 16px;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
+    border: 1px solid rgba(239, 68, 68, 0.3);
   }
 
   .success-message {
@@ -340,14 +446,60 @@
     padding: 20px;
   }
 
-  .success-message span {
-    font-size: 3rem;
-    display: block;
-    margin-bottom: 16px;
+  .success-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    background: var(--success-glow);
+    border-radius: 50%;
+    color: var(--success);
+    margin-bottom: 20px;
   }
 
   .success-message p {
-    color: rgba(255,255,255,0.8);
+    color: var(--text-secondary);
     margin-bottom: 24px;
+    font-size: 0.95rem;
+  }
+
+  .guest-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.8rem !important;
+  }
+
+  /* Spinner animation */
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Mobile adjustments */
+  @media (max-width: 480px) {
+    .logo h1 {
+      font-size: 2.25rem;
+    }
+
+    .logo-icon {
+      width: 56px;
+      height: 56px;
+    }
+
+    .logo-icon :global(.icon) {
+      width: 32px;
+      height: 32px;
+    }
+
+    .auth-card {
+      padding: 24px 20px;
+    }
   }
 </style>
