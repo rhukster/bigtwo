@@ -13,6 +13,7 @@
     leaveRoom,
     toggleReady,
     addAi,
+    removeAi,
     startGame,
     playCards,
     passTurn,
@@ -26,7 +27,10 @@
     activePMUser,
     sendPM,
     openPMChat,
-    closePMChat
+    closePMChat,
+    pendingInvites,
+    acceptInvite,
+    dismissInvite
   } from '$lib/stores/socket';
   import GameView from '$lib/components/GameView.svelte';
   import Icon from '$lib/components/Icon.svelte';
@@ -35,7 +39,7 @@
   let showCreateRoom = false;
   let showRules = false;
   let roomName = '';
-  let maxPlayers: 2 | 3 | 4 = 4;
+  let maxPlayers: 2 | 3 | 4 = 3;
   let fillWithAi = true;
   let aiDifficulty: 'easy' | 'medium' | 'hard' = 'medium';
   let chatInput = '';
@@ -246,6 +250,15 @@
                     <div class="player-status">
                       {#if player.isAi}
                         <span class="ready-text"><Icon name="check" size="sm" /> Ready</span>
+                        {#if $currentRoom.hostId === $user?.id}
+                          <button
+                            class="remove-ai-btn"
+                            on:click={() => removeAi($currentRoom?.id || '', player.id)}
+                            title="Remove CPU"
+                          >
+                            <Icon name="x" size="sm" />
+                          </button>
+                        {/if}
                       {:else if player.isReady}
                         <span class="ready-text"><Icon name="check" size="sm" /> Ready</span>
                       {:else if $readyCountdowns[player.id] !== undefined}
@@ -374,24 +387,33 @@
               {#each $lobbyState.users as onlineUser}
                 <li
                   class:in-game={onlineUser.status === 'in-game'}
-                  class:clickable={onlineUser.id !== $user?.id}
                   class:has-unread={$unreadPMs.has(onlineUser.id)}
-                  on:click={() => handleClickUser(onlineUser.id, onlineUser.name)}
                 >
-                  <span class="user-name-row">
-                    <span class="status-dot" class:online={onlineUser.status !== 'in-game'} class:busy={onlineUser.status === 'in-game'}></span>
-                    {onlineUser.name}
-                    {#if onlineUser.id === $user?.id}
+                  {#if onlineUser.id !== $user?.id}
+                    <button
+                      type="button"
+                      class="user-row-btn"
+                      on:click={() => handleClickUser(onlineUser.id, onlineUser.name)}
+                    >
+                      <span class="user-name-row">
+                        <span class="status-dot" class:online={onlineUser.status !== 'in-game'} class:busy={onlineUser.status === 'in-game'}></span>
+                        {onlineUser.name}
+                        {#if $unreadPMs.has(onlineUser.id)}
+                          <span class="unread-indicator"></span>
+                        {/if}
+                      </span>
+                      {#if onlineUser.status === 'in-game'}
+                        <span class="badge badge-muted">In Game</span>
+                      {:else}
+                        <Icon name="message" size="sm" class="pm-hint" />
+                      {/if}
+                    </button>
+                  {:else}
+                    <span class="user-name-row">
+                      <span class="status-dot" class:online={onlineUser.status !== 'in-game'} class:busy={onlineUser.status === 'in-game'}></span>
+                      {onlineUser.name}
                       <span class="you-badge">(you)</span>
-                    {/if}
-                    {#if $unreadPMs.has(onlineUser.id)}
-                      <span class="unread-indicator"></span>
-                    {/if}
-                  </span>
-                  {#if onlineUser.status === 'in-game'}
-                    <span class="badge badge-muted">In Game</span>
-                  {:else if onlineUser.id !== $user?.id}
-                    <Icon name="message" size="sm" class="pm-hint" />
+                    </span>
                   {/if}
                 </li>
               {/each}
@@ -430,18 +452,20 @@
 </div>
 
 {#if showCreateRoom}
-  <div class="modal-overlay" on:click={() => showCreateRoom = false}>
-    <div class="modal" on:click|stopPropagation>
-      <h2>Create Room</h2>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" on:click={() => showCreateRoom = false} on:keydown={(e) => e.key === 'Escape' && (showCreateRoom = false)} role="dialog" aria-modal="true" aria-labelledby="create-room-title" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal" on:click|stopPropagation on:keydown|stopPropagation>
+      <h2 id="create-room-title">Create Room</h2>
 
       <div class="form-group">
-        <label>Room Name (optional)</label>
-        <input type="text" bind:value={roomName} placeholder="My Game" />
+        <label for="room-name">Room Name (optional)</label>
+        <input id="room-name" type="text" bind:value={roomName} placeholder="My Game" />
       </div>
 
       <div class="form-group">
-        <label>Max Players</label>
-        <select bind:value={maxPlayers}>
+        <label for="max-players">Max Players</label>
+        <select id="max-players" bind:value={maxPlayers}>
           <option value={2}>2 Players</option>
           <option value={3}>3 Players</option>
           <option value={4}>4 Players</option>
@@ -449,8 +473,8 @@
       </div>
 
       <div class="form-group">
-        <label>Room Visibility</label>
-        <div class="visibility-options">
+        <span class="label-text">Room Visibility</span>
+        <div class="visibility-options" role="radiogroup" aria-label="Room visibility">
           <button
             type="button"
             class="visibility-btn"
@@ -483,8 +507,8 @@
 
       {#if fillWithAi}
         <div class="form-group">
-          <label>AI Difficulty</label>
-          <select bind:value={aiDifficulty}>
+          <label for="ai-difficulty">AI Difficulty</label>
+          <select id="ai-difficulty" bind:value={aiDifficulty}>
             <option value="easy">Easy</option>
             <option value="medium">Medium</option>
             <option value="hard">Hard</option>
@@ -532,11 +556,40 @@
   </div>
 {/if}
 
+<!-- Game Invites -->
+{#if $pendingInvites.length > 0 && !$gameState && !$currentRoom}
+  <div class="invites-container">
+    {#each $pendingInvites as invite}
+      <div class="invite-card">
+        <div class="invite-content">
+          <div class="invite-icon">
+            <Icon name="device-gamepad-2" size="lg" />
+          </div>
+          <div class="invite-info">
+            <div class="invite-title">{invite.inviterName} invited you!</div>
+            <div class="invite-room">{invite.roomName} ({invite.playerCount}/{invite.maxPlayers})</div>
+          </div>
+        </div>
+        <div class="invite-actions">
+          <button class="btn btn-success btn-sm" on:click={() => acceptInvite(invite.roomId)}>
+            <Icon name="check" size="sm" /> Join
+          </button>
+          <button class="btn btn-secondary btn-sm" on:click={() => dismissInvite(invite.roomId)}>
+            <Icon name="x" size="sm" />
+          </button>
+        </div>
+      </div>
+    {/each}
+  </div>
+{/if}
+
 {#if showRules}
-  <div class="modal-overlay" on:click={() => showRules = false}>
-    <div class="rules-modal" on:click|stopPropagation>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-overlay" on:click={() => showRules = false} on:keydown={(e) => e.key === 'Escape' && (showRules = false)} role="dialog" aria-modal="true" aria-labelledby="rules-title" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="rules-modal" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="rules-header">
-        <h2><Icon name="book" size="lg" /> Game Rules</h2>
+        <h2 id="rules-title"><Icon name="book" size="lg" /> Game Rules</h2>
         <button class="rules-close" on:click={() => showRules = false}><Icon name="x" size="lg" /></button>
       </div>
       <div class="rules-content">
@@ -767,6 +820,28 @@
     min-height: 0;
   }
 
+  .panel {
+    background: var(--bg-dark);
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+    padding: 14px;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .panel-header h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
   .online-users {
     flex-shrink: 0;
     max-height: 200px;
@@ -780,7 +855,7 @@
   }
 
   .online-users li {
-    padding: 8px 0;
+    padding: 4px 0;
     color: var(--text-secondary);
     font-size: 0.875rem;
     display: flex;
@@ -794,18 +869,28 @@
     opacity: 0.5;
   }
 
-  .online-users li.clickable {
-    cursor: pointer;
-    padding: 8px;
-    margin: 0 -8px;
-  }
-
-  .online-users li.clickable:hover {
-    background: rgba(255, 255, 255, 0.05);
-  }
-
   .online-users li.has-unread {
     background: var(--accent-primary-glow);
+  }
+
+  .user-row-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 8px;
+    margin: 0 -8px;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+
+  .user-row-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
   }
 
   .user-name-row {
@@ -833,7 +918,7 @@
     color: var(--text-muted);
   }
 
-  .online-users li.clickable:hover :global(.pm-hint) {
+  .user-row-btn:hover :global(.pm-hint) {
     opacity: 0.6;
   }
 
@@ -1021,6 +1106,29 @@
     gap: 4px;
   }
 
+  .player-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .remove-ai-btn {
+    background: rgba(220, 53, 69, 0.2);
+    border: 1px solid rgba(220, 53, 69, 0.4);
+    color: #dc3545;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+  }
+
+  .remove-ai-btn:hover {
+    background: rgba(220, 53, 69, 0.4);
+    border-color: #dc3545;
+  }
+
   .waiting-text {
     color: var(--text-muted);
     display: flex;
@@ -1075,7 +1183,8 @@
     margin-bottom: 20px;
   }
 
-  .form-group label {
+  .form-group label,
+  .form-group .label-text {
     display: block;
     margin-bottom: 8px;
     color: var(--text-secondary);
@@ -1229,6 +1338,83 @@
     font-size: 0.85rem;
   }
 
+  /* Game Invites */
+  .invites-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 60;
+    max-width: 320px;
+  }
+
+  .invite-card {
+    background: var(--bg-dark);
+    border: 1px solid var(--accent-primary);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
+    animation: slideIn 0.3s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .invite-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .invite-icon {
+    color: var(--accent-primary);
+    flex-shrink: 0;
+  }
+
+  .invite-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .invite-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+  }
+
+  .invite-room {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 2px;
+  }
+
+  .invite-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .btn-success {
+    background: var(--success);
+    color: white;
+    border: none;
+  }
+
+  .btn-success:hover {
+    background: #45a049;
+  }
+
   /* Rules Modal */
   .rules-modal {
     background: var(--bg-dark);
@@ -1374,6 +1560,232 @@
     .user-info {
       flex-wrap: wrap;
       justify-content: center;
+    }
+  }
+
+  /* Mobile styles */
+  @media (max-width: 480px) {
+    .lobby-header {
+      padding: 8px 12px;
+      gap: 8px;
+    }
+
+    .logo h1 {
+      font-size: 1rem;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+    }
+
+    .user-info {
+      gap: 6px;
+    }
+
+    .user-info .btn {
+      padding: 6px 10px;
+      font-size: 0.75rem;
+    }
+
+    .lobby-main {
+      padding: 12px 8px;
+      height: auto;
+      min-height: calc(100vh - 60px);
+      overflow-y: auto;
+    }
+
+    .lobby-content {
+      gap: 12px;
+      height: auto;
+    }
+
+    .main-section {
+      overflow: visible;
+      height: auto;
+    }
+
+    .sidebar {
+      height: auto;
+      gap: 8px;
+    }
+
+    /* Panels - smaller, less scrolling */
+    .panel {
+      padding: 10px;
+    }
+
+    .panel-header {
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+
+    .panel-header h3 {
+      font-size: 0.85rem;
+    }
+
+    /* Online users - compact */
+    .online-users {
+      max-height: 120px;
+    }
+
+    .online-users li {
+      font-size: 0.8rem;
+      padding: 3px 0;
+    }
+
+    .user-row-btn {
+      padding: 6px;
+      margin: 0 -6px;
+    }
+
+    /* Chat section - more usable */
+    .chat-section {
+      min-height: 150px;
+      max-height: 200px;
+    }
+
+    .chat-messages {
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+    }
+
+    .chat-message {
+      padding: 3px 0;
+    }
+
+    .chat-input {
+      gap: 6px;
+    }
+
+    .chat-input input {
+      padding: 8px 10px;
+      font-size: 0.85rem;
+    }
+
+    /* Section header */
+    .section-header {
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .section-header h2 {
+      font-size: 1rem;
+    }
+
+    /* Join by code */
+    .join-by-code {
+      margin-bottom: 12px;
+      gap: 6px;
+    }
+
+    .join-by-code input {
+      padding: 10px;
+      font-size: 0.9rem;
+    }
+
+    /* Room cards */
+    .room-card {
+      padding: 12px;
+    }
+
+    .room-card h3 {
+      font-size: 0.9rem;
+    }
+
+    .room-card p {
+      font-size: 0.8rem;
+    }
+
+    /* Room view */
+    .room-header {
+      margin-bottom: 16px;
+    }
+
+    .room-header h2 {
+      font-size: 1.1rem;
+      margin: 10px 0 8px;
+    }
+
+    .room-code {
+      font-size: 0.85rem;
+    }
+
+    .room-code strong {
+      font-size: 1rem;
+    }
+
+    .players-grid {
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .player-slot {
+      padding: 14px;
+    }
+
+    .player-name {
+      font-size: 0.9rem;
+    }
+
+    .player-status {
+      font-size: 0.8rem;
+    }
+
+    /* Modals */
+    .modal {
+      padding: 18px;
+      max-width: 95%;
+    }
+
+    .modal h2 {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .visibility-options {
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .visibility-btn {
+      padding: 12px;
+    }
+
+    /* PM Panel */
+    .pm-panel {
+      width: calc(100vw - 20px);
+      right: 10px;
+      bottom: 10px;
+      max-height: 300px;
+    }
+
+    .pm-messages {
+      max-height: 150px;
+    }
+
+    /* Invites */
+    .invites-container {
+      top: 60px;
+      right: 10px;
+      max-width: calc(100vw - 20px);
+    }
+
+    .invite-card {
+      padding: 10px 12px;
+    }
+
+    .invite-title {
+      font-size: 0.85rem;
+    }
+
+    .invite-room {
+      font-size: 0.75rem;
     }
   }
 </style>

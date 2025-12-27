@@ -201,7 +201,7 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
       players: [{
         id: userId,
         name: user.name,
-        isReady: false,
+        isReady: true,  // Host is always ready (they control when to start)
         isHost: true,
         isAi: false,
         isGuest: user.isGuest,
@@ -341,6 +341,7 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
           const humanPlayer = room.players.find(p => !p.isAi);
           if (humanPlayer) {
             humanPlayer.isHost = true;
+            humanPlayer.isReady = true;  // Host is always ready
             room.hostId = humanPlayer.id;
             room.hostName = humanPlayer.name;
           }
@@ -382,6 +383,9 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
 
     const player = room.players.find(p => p.id === userId);
     if (!player) return;
+
+    // Host is always ready - ignore ready toggle for hosts
+    if (player.isHost) return;
 
     player.isReady = data.ready;
 
@@ -475,5 +479,51 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
     room.settings = { ...room.settings, ...data.settings };
     io.to(room.id).emit('room:updated', room);
     io.emit('lobby:room_updated', room);
+  });
+
+  // Send game invite to another user
+  socket.on('room:invite', (data: { roomId: string; targetUserId: string }) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) return;
+
+    const user = lobbyUsers.get(userId);
+    if (!user) return;
+
+    const room = gameRooms.get(data.roomId);
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+
+    // Check if room is full
+    if (room.players.length >= room.settings.maxPlayers) {
+      socket.emit('error', { message: 'Room is full' });
+      return;
+    }
+
+    // Check if game already started
+    if (room.status !== 'waiting') {
+      socket.emit('error', { message: 'Game already in progress' });
+      return;
+    }
+
+    const targetUser = lobbyUsers.get(data.targetUserId);
+    if (!targetUser) {
+      socket.emit('error', { message: 'User not found or offline' });
+      return;
+    }
+
+    // Send invite to target user
+    io.to(targetUser.socketId).emit('room:invite_received', {
+      roomId: room.id,
+      roomCode: room.code,
+      roomName: room.name,
+      inviterId: userId,
+      inviterName: user.name,
+      playerCount: room.players.length,
+      maxPlayers: room.settings.maxPlayers
+    });
+
+    console.log(`[Room] ${user.name} invited ${targetUser.name} to room ${room.code}`);
   });
 }

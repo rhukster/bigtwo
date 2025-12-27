@@ -66,6 +66,90 @@ interface SharedState {
 // Active games store
 const activeGames = new Map<string, ServerGameState>();
 
+// Turn timers store
+const turnTimers = new Map<string, NodeJS.Timeout>();
+const TURN_TIME_LIMIT = 30; // 30 seconds per turn
+
+function clearTurnTimer(gameId: string) {
+  const timer = turnTimers.get(gameId);
+  if (timer) {
+    clearTimeout(timer);
+    turnTimers.delete(gameId);
+  }
+}
+
+function startTurnTimer(
+  io: Server,
+  room: GameRoom,
+  game: ServerGameState,
+  gameRooms: Map<string, GameRoom>
+) {
+  clearTurnTimer(game.id);
+
+  const currentPlayer = game.players[game.currentPlayerIndex];
+
+  // Don't start timer for AI players
+  if (currentPlayer.isAi || game.gameOver) return;
+
+  // Emit timer start to all players
+  io.to(room.id).emit('game:timer_start', {
+    playerId: currentPlayer.id,
+    timeLimit: TURN_TIME_LIMIT
+  });
+
+  // Set timeout for auto-pass
+  const timer = setTimeout(() => {
+    turnTimers.delete(game.id);
+
+    // Check if still this player's turn and game still active
+    if (game.gameOver || game.players[game.currentPlayerIndex].id !== currentPlayer.id) {
+      return;
+    }
+
+    console.log(`[Timer] Auto-passing for ${currentPlayer.name} (timeout)`);
+
+    // If player has control or first play, they must play - skip to AI logic instead
+    const hasControl = game.controlPlayerIndex === game.currentPlayerIndex;
+    const isFirstPlay = !game.firstPlayMade;
+
+    if (isFirstPlay || hasControl) {
+      // Can't pass - find any valid play or let AI handle it
+      const aiPlay = findAiPlay(
+        currentPlayer.hand,
+        game.currentPlay,
+        game.currentPlayType,
+        hasControl,
+        game.firstPlayMade,
+        'easy' // Use easy AI for auto-play
+      );
+
+      if (aiPlay) {
+        const playType = getPlayType(aiPlay);
+        if (playType) {
+          io.to(room.id).emit('game:auto_play', {
+            playerId: currentPlayer.id,
+            playerName: currentPlayer.name,
+            reason: 'timeout'
+          });
+          executePlay(io, room, game, gameRooms, game.currentPlayerIndex, aiPlay, playType);
+          return;
+        }
+      }
+    }
+
+    // Auto-pass
+    io.to(room.id).emit('game:auto_pass', {
+      playerId: currentPlayer.id,
+      playerName: currentPlayer.name,
+      reason: 'timeout'
+    });
+    executePass(io, room, game, gameRooms, game.currentPlayerIndex);
+
+  }, TURN_TIME_LIMIT * 1000);
+
+  turnTimers.set(game.id, timer);
+}
+
 export function setupGameHandlers(io: Server, socket: Socket, state: SharedState) {
   const { lobbyUsers, gameRooms, socketToUser } = state;
 
@@ -303,20 +387,38 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
     if (!userId) return;
 
     const room = gameRooms.get(data.roomId);
+
+    // If room doesn't exist or has no active game, just let them leave gracefully
     if (!room || !room.gameId) {
-      socket.emit('error', { message: 'Room not found' });
+      // Update user status back to online
+      const user = lobbyUsers.get(userId);
+      if (user) {
+        user.status = 'online';
+      }
+      socket.leave(data.roomId);
+      socket.emit('room:left');
+      console.log(`[Game] User ${userId} left (room/game already cleaned up)`);
       return;
     }
 
     const game = activeGames.get(room.gameId);
     if (!game) {
-      socket.emit('error', { message: 'Game not found' });
+      // Room exists but game doesn't - just let them leave
+      const user = lobbyUsers.get(userId);
+      if (user) {
+        user.status = 'online';
+      }
+      socket.leave(room.id);
+      socket.emit('room:left');
+      console.log(`[Game] User ${userId} left (game already ended)`);
       return;
     }
 
     const playerIndex = game.players.findIndex(p => p.id === userId);
     if (playerIndex === -1) {
-      socket.emit('error', { message: 'Not in this game' });
+      // Not in the game - just let them leave
+      socket.leave(room.id);
+      socket.emit('room:left');
       return;
     }
 
@@ -329,9 +431,24 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
 
     // Remove from room player list and add as AI
     const roomPlayerIndex = room.players.findIndex(p => p.id === userId);
+    const wasHost = roomPlayerIndex !== -1 && room.players[roomPlayerIndex].isHost;
+
     if (roomPlayerIndex !== -1) {
       room.players[roomPlayerIndex].isAi = true;
+      room.players[roomPlayerIndex].isHost = false;
       room.players[roomPlayerIndex].name = `${room.players[roomPlayerIndex].name} (CPU)`;
+    }
+
+    // If leaving player was host, transfer to next human player
+    if (wasHost) {
+      const nextHuman = room.players.find(p => !p.isAi);
+      if (nextHuman) {
+        nextHuman.isHost = true;
+        nextHuman.isReady = true;  // Host is always ready
+        room.hostId = nextHuman.id;
+        room.hostName = nextHuman.name;
+        console.log(`[Game] Host transferred to ${nextHuman.name}`);
+      }
     }
 
     // Update user status
@@ -364,10 +481,90 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
 
     console.log(`[Game] ${player.name} left game ${game.id}, replaced with AI`);
 
+    // Check if all remaining players are AI - if so, end the game as abandoned
+    const hasHumanPlayers = game.players.some(p => !p.isAi);
+    if (!hasHumanPlayers) {
+      console.log(`[Game] All players are now AI in game ${game.id}, abandoning game`);
+
+      // Clear any turn timer
+      clearTurnTimer(game.id);
+
+      // Mark game as over
+      game.gameOver = true;
+      game.endedAt = new Date();
+
+      // Clean up the game
+      room.status = 'finished';
+      room.gameId = undefined;
+
+      // Delete the room since no humans are left
+      gameRooms.delete(room.id);
+      io.emit('lobby:room_deleted', { roomId: room.id });
+
+      // Clean up game state
+      activeGames.delete(game.id);
+
+      console.log(`[Game] Game ${game.id} and room ${room.code} cleaned up (all players left)`);
+      return;
+    }
+
     // If it was their turn, process AI turn
     if (game.currentPlayerIndex === playerIndex && !game.gameOver) {
       setTimeout(() => processAiTurn(io, room, game, gameRooms), 1000);
     }
+  });
+
+  // Rematch - start a new game with the same players
+  socket.on('game:rematch', (data: { roomId: string }) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) return;
+
+    const room = gameRooms.get(data.roomId);
+    if (!room) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+
+    // Check if game has ended
+    const oldGame = room.gameId ? activeGames.get(room.gameId) : null;
+    if (oldGame && !oldGame.gameOver) {
+      socket.emit('error', { message: 'Game is still in progress' });
+      return;
+    }
+
+    // Check if user is in the room
+    const inRoom = room.players.some(p => p.id === userId);
+    if (!inRoom) {
+      socket.emit('error', { message: 'Not in this room' });
+      return;
+    }
+
+    console.log(`[Game] Rematch requested by ${userId} in room ${room.id}`);
+
+    // Reset room status
+    room.status = 'waiting';
+
+    // Reset non-host human players to not ready, keep AI and host as ready
+    for (const player of room.players) {
+      if (!player.isAi && !player.isHost) {
+        player.isReady = false;
+      }
+    }
+
+    // Clear old game reference
+    if (room.gameId) {
+      activeGames.delete(room.gameId);
+    }
+    room.gameId = null;
+
+    // Notify all players in room
+    io.to(room.id).emit('room:updated', room);
+    io.to(room.id).emit('game:rematch_ready', { requestedBy: userId });
+
+    // Update lobby
+    io.emit('lobby:room_updated', room);
+
+    console.log(`[Game] Room ${room.id} reset for rematch`);
   });
 
   // DEBUG: Cheat code to fast-forward to near-win state
@@ -467,6 +664,9 @@ function executePlay(
   cards: Card[],
   playType: PlayTypeResult
 ) {
+  // Clear turn timer when play is made
+  clearTurnTimer(game.id);
+
   const player = game.players[playerIndex];
 
   // Update game state
@@ -506,6 +706,9 @@ function executePlay(
 }
 
 function executePass(io: Server, room: GameRoom, game: ServerGameState, gameRooms: Map<string, GameRoom>, playerIndex: number) {
+  // Clear turn timer when pass is made
+  clearTurnTimer(game.id);
+
   const player = game.players[playerIndex];
 
   game.passCount++;
@@ -552,6 +755,9 @@ function nextTurn(io: Server, room: GameRoom, game: ServerGameState, gameRooms: 
   // If next player is AI, trigger their turn
   if (game.players[game.currentPlayerIndex].isAi && !game.gameOver) {
     setTimeout(() => processAiTurn(io, room, game, gameRooms), 1000);
+  } else if (!game.gameOver) {
+    // Start turn timer for human player
+    startTurnTimer(io, room, game, gameRooms);
   }
 }
 
@@ -584,6 +790,9 @@ function processAiTurn(io: Server, room: GameRoom, game: ServerGameState, gameRo
 }
 
 function endGameWithWinner(io: Server, room: GameRoom, game: ServerGameState, winnerIndex: number, gameRooms: Map<string, GameRoom>) {
+  // Clear turn timer when game ends
+  clearTurnTimer(game.id);
+
   game.gameOver = true;
   game.winnerId = game.players[winnerIndex].id;
   game.endedAt = new Date();

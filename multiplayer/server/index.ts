@@ -18,6 +18,9 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Import routes
 import authRoutes from './routes/auth.js';
 
+// Import webhook handler
+import { setupWebhook } from './webhook.js';
+
 // Import socket handlers
 import { setupLobbyHandlers } from './socket/lobby.js';
 import { setupGameHandlers } from './socket/game.js';
@@ -48,6 +51,12 @@ app.use(cors({
   origin: isProduction ? APP_URL : true,
   credentials: true
 }));
+
+// Setup GitHub webhook (before json middleware - needs raw body)
+if (isProduction) {
+  setupWebhook(app);
+}
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(session({
@@ -188,26 +197,45 @@ io.on('connection', (socket) => {
       const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
       if (playerIndex !== -1 && !room.players[playerIndex].isAi) {
         const player = room.players[playerIndex];
+        const wasHost = player.isHost;
 
         if (room.status === 'waiting') {
           // Remove player from waiting room
           room.players.splice(playerIndex, 1);
 
-          // If host left, assign new host or delete room
-          if (player.isHost) {
-            if (room.players.length > 0) {
-              room.players[0].isHost = true;
-              room.hostId = room.players[0].id;
-              room.hostName = room.players[0].name;
-            } else {
-              gameRooms.delete(roomId);
-              io.emit('lobby:room_deleted', { roomId });
-              continue;
+          // Check if any human players remain
+          const humanPlayers = room.players.filter(p => !p.isAi);
+          if (humanPlayers.length === 0) {
+            // No humans left - delete room
+            gameRooms.delete(roomId);
+            io.emit('lobby:room_deleted', { roomId });
+            continue;
+          }
+
+          // If host left, assign new host to next human
+          if (wasHost) {
+            const nextHuman = humanPlayers[0];
+            nextHuman.isHost = true;
+            nextHuman.isReady = true;  // Host is always ready
+            room.hostId = nextHuman.id;
+            room.hostName = nextHuman.name;
+            console.log(`[Room] Host transferred to ${nextHuman.name} (disconnect)`);
+          }
+        } else if (room.status === 'playing' || room.status === 'finished') {
+          // In active/finished game: transfer host to next human if needed
+          if (wasHost) {
+            player.isHost = false;
+            const nextHuman = room.players.find(p => !p.isAi && p.id !== player.id);
+            if (nextHuman) {
+              nextHuman.isHost = true;
+              nextHuman.isReady = true;  // Host is always ready
+              room.hostId = nextHuman.id;
+              room.hostName = nextHuman.name;
+              console.log(`[Game] Host transferred to ${nextHuman.name} (disconnect)`);
             }
           }
-        } else if (room.status === 'playing') {
-          // Mark player as disconnected but don't remove
-          // They can reconnect
+
+          // Mark player as disconnected
           io.to(roomId).emit('game:player_disconnected', {
             playerId: player.id,
             playerName: player.name

@@ -12,14 +12,14 @@
 
   let { name, size = 'md', class: className = '' }: Props = $props();
 
-  const sizeMap = {
+  const sizeMap: Record<string, number> = {
     sm: 16,
     md: 20,
     lg: 24,
     xl: 32
   };
 
-  const iconSize = typeof size === 'number' ? size : sizeMap[size];
+  let iconSize = $derived(typeof size === 'number' ? size : sizeMap[size]);
 
   // All icon paths from Tabler Icons
   const icons: Record<string, string> = {

@@ -21,19 +21,24 @@ rsync -avz --delete \
   --exclude '.git' \
   --exclude '.env' \
   --exclude '.svelte-kit' \
-  --exclude 'data/*.db' \
+  --exclude 'data' \
   --exclude 'logs' \
   --exclude '.DS_Store' \
   ./ "$SERVER:$REMOTE_PATH/"
 
-# Install dependencies and restart on server
-echo "📥 Installing dependencies on server..."
-ssh "$SERVER" "cd $REMOTE_PATH && npm install --production=false"
+echo ""
+echo "✅ Files synced!"
 
-echo "🔄 Restarting PM2..."
-ssh "$SERVER" "cd $REMOTE_PATH && pm2 restart bigtwo 2>/dev/null || pm2 start ecosystem.config.cjs"
-ssh "$SERVER" "pm2 save"
+# Ensure data directory exists (excluded from sync to preserve database)
+echo "📁 Ensuring data directory exists..."
+ssh "$SERVER" "mkdir -p $REMOTE_PATH/data"
+
+# Recreate _app symlink (Nginx serves static files from webroot)
+echo "🔗 Creating _app symlink..."
+ssh "$SERVER" "cd $REMOTE_PATH && ln -sfn build/_app _app"
 
 echo ""
-echo "✅ Deployment complete!"
-echo "🌐 https://bigtwo.dev"
+echo "To complete setup, SSH to server and run:"
+echo "  cd $REMOTE_PATH"
+echo "  npm install"
+echo "  pm2 restart bigtwo"

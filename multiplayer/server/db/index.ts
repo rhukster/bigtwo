@@ -153,7 +153,7 @@ export function recordGameResult(
 }
 
 export function updateLeaderboard(userId: string, won: boolean, pointsDelta: number) {
-  const current = db.prepare(`SELECT * FROM leaderboard WHERE user_id = ?`).get(userId) as {
+  let current = db.prepare(`SELECT * FROM leaderboard WHERE user_id = ?`).get(userId) as {
     total_games: number;
     wins: number;
     total_points: number;
@@ -161,7 +161,17 @@ export function updateLeaderboard(userId: string, won: boolean, pointsDelta: num
     best_streak: number;
   } | undefined;
 
-  if (!current) return;
+  // Create leaderboard entry if it doesn't exist (for legacy users)
+  if (!current) {
+    console.log(`[Leaderboard] Creating missing entry for user ${userId}`);
+    try {
+      db.prepare(`INSERT INTO leaderboard (user_id) VALUES (?)`).run(userId);
+      current = { total_games: 0, wins: 0, total_points: 0, current_streak: 0, best_streak: 0 };
+    } catch (err) {
+      console.error(`[Leaderboard] Failed to create entry for user ${userId}:`, err);
+      return;
+    }
+  }
 
   const newStreak = won ? current.current_streak + 1 : 0;
   const bestStreak = Math.max(current.best_streak, newStreak);

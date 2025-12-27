@@ -146,8 +146,8 @@ router.get('/verify', (req, res) => {
     });
 
     // Redirect to app
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    res.redirect(`${clientUrl}/lobby?welcome=true`);
+    const appUrl = process.env.APP_URL || 'http://localhost:5173';
+    res.redirect(`${appUrl}/lobby?welcome=true`);
   } catch (error) {
     console.error('[Auth] Verify error:', error);
     res.status(500).json({ error: 'Verification failed' });

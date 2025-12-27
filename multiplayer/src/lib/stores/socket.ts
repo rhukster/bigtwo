@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { io, Socket } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
 import type { User, LobbyState, Room, ChatMessage, ClientGameState } from '../game/types.js';
 
 // User store
@@ -15,6 +15,40 @@ export const gameState = writable<ClientGameState | null>(null);
 export const lobbyMessages = writable<ChatMessage[]>([]);
 export const roomMessages = writable<ChatMessage[]>([]);
 export const readyCountdowns = writable<Record<string, number>>({});  // playerId -> seconds left
+
+// Turn timer
+export const turnTimer = writable<{ playerId: string; timeLeft: number } | null>(null);
+let turnTimerInterval: ReturnType<typeof setInterval> | null = null;
+
+function startClientTurnTimer(playerId: string, timeLimit: number) {
+  // Clear any existing timer
+  if (turnTimerInterval) {
+    clearInterval(turnTimerInterval);
+  }
+
+  turnTimer.set({ playerId, timeLeft: timeLimit });
+
+  turnTimerInterval = setInterval(() => {
+    turnTimer.update(t => {
+      if (!t || t.timeLeft <= 0) {
+        if (turnTimerInterval) {
+          clearInterval(turnTimerInterval);
+          turnTimerInterval = null;
+        }
+        return null;
+      }
+      return { ...t, timeLeft: t.timeLeft - 1 };
+    });
+  }, 1000);
+}
+
+function clearClientTurnTimer() {
+  if (turnTimerInterval) {
+    clearInterval(turnTimerInterval);
+    turnTimerInterval = null;
+  }
+  turnTimer.set(null);
+}
 
 // Private messages: key is the other user's ID
 export interface PMMessage extends ChatMessage {
@@ -42,6 +76,23 @@ export const gameEndResult = writable<GameEndResult | null>(null);
 export const unreadRoomMessages = writable<number>(0);
 export const roomChatOpen = writable<boolean>(false);
 
+// Unread lobby messages count (for when in game)
+export const unreadLobbyMessages = writable<number>(0);
+export const lobbyChatOpen = writable<boolean>(false);
+
+// Game invites received
+export interface GameInvite {
+  roomId: string;
+  roomCode: string;
+  roomName: string;
+  inviterId: string;
+  inviterName: string;
+  playerCount: number;
+  maxPlayers: number;
+  receivedAt: number;
+}
+export const pendingInvites = writable<GameInvite[]>([]);
+
 export function connectSocket(currentUser: User) {
   // Prevent multiple socket connections - check if socket exists at all
   if (socket) {
@@ -64,6 +115,13 @@ export function connectSocket(currentUser: User) {
       userId: currentUser.id,
       userName: currentUser.username,
       isGuest: currentUser.isGuest
+    });
+
+    // Fetch lobby chat history
+    socket?.emit('chat:get_lobby_history', (messages: ChatMessage[]) => {
+      if (messages && messages.length > 0) {
+        lobbyMessages.set(messages);
+      }
     });
   });
 
@@ -131,10 +189,23 @@ export function connectSocket(currentUser: User) {
 
   socket.on('room:joined', ({ room }: { room: Room }) => {
     currentRoom.set(room);
+
+    // Fetch room chat history
+    socket?.emit('chat:get_room_history', { roomId: room.id }, (messages: ChatMessage[]) => {
+      if (messages && messages.length > 0) {
+        roomMessages.set(messages);
+      }
+    });
   });
 
   socket.on('room:updated', (room: Room) => {
     currentRoom.set(room);
+
+    // If room went back to waiting status (e.g., after rematch), clear game state
+    if (room.status === 'waiting') {
+      gameState.set(null);
+      gameEndResult.set(null);
+    }
   });
 
   socket.on('room:left', () => {
@@ -200,15 +271,42 @@ export function connectSocket(currentUser: User) {
 
   socket.on('game:play_made', (data: any) => {
     console.log('[Game] Play made:', data);
+    clearClientTurnTimer();
   });
 
   socket.on('game:pass_made', (data: any) => {
     console.log('[Game] Pass:', data);
+    clearClientTurnTimer();
   });
 
   socket.on('game:end', (data: GameEndResult) => {
     console.log('[Game] End:', data);
+    clearClientTurnTimer();
     gameEndResult.set(data);
+  });
+
+  // Turn timer events
+  socket.on('game:timer_start', (data: { playerId: string; timeLimit: number }) => {
+    console.log('[Game] Timer start:', data);
+    startClientTurnTimer(data.playerId, data.timeLimit);
+  });
+
+  socket.on('game:auto_pass', (data: { playerId: string; playerName: string; reason: string }) => {
+    console.log('[Game] Auto-pass:', data);
+    clearClientTurnTimer();
+  });
+
+  socket.on('game:auto_play', (data: { playerId: string; playerName: string; reason: string }) => {
+    console.log('[Game] Auto-play:', data);
+    clearClientTurnTimer();
+  });
+
+  // Rematch - reset to room view
+  socket.on('game:rematch_ready', (data: { requestedBy: string }) => {
+    console.log('[Game] Rematch ready, requested by:', data.requestedBy);
+    gameState.set(null);
+    gameEndResult.set(null);
+    readyCountdowns.set({});
   });
 
   // Chat events
@@ -220,6 +318,10 @@ export function connectSocket(currentUser: User) {
       }
       return [...msgs, message];
     });
+    // Increment unread if lobby chat is closed and message is from someone else
+    if (!get(lobbyChatOpen) && message.senderId !== currentUser.id) {
+      unreadLobbyMessages.update(n => n + 1);
+    }
   });
 
   socket.on('chat:room_message', (message: ChatMessage) => {
@@ -268,6 +370,18 @@ export function connectSocket(currentUser: User) {
         return pms;
       }
       return { ...pms, [recipientId]: [...existing, message] };
+    });
+  });
+
+  // Invite events
+  socket.on('room:invite_received', (invite: Omit<GameInvite, 'receivedAt'>) => {
+    console.log('[Socket] Invite received:', invite);
+    pendingInvites.update(invites => {
+      // Don't add duplicate invites from same room
+      if (invites.some(i => i.roomId === invite.roomId)) {
+        return invites;
+      }
+      return [...invites, { ...invite, receivedAt: Date.now() }];
     });
   });
 
@@ -325,6 +439,13 @@ export function setRoomChatOpen(open: boolean) {
   }
 }
 
+export function setLobbyChatOpen(open: boolean) {
+  lobbyChatOpen.set(open);
+  if (open) {
+    unreadLobbyMessages.set(0);
+  }
+}
+
 export function clearGameEndResult() {
   gameEndResult.set(null);
 }
@@ -368,6 +489,11 @@ export function leaveGame(roomId: string) {
   socket?.emit('game:leave', { roomId });
 }
 
+export function requestRematch(roomId: string) {
+  console.log('[Socket] requestRematch called, roomId:', roomId);
+  socket?.emit('game:rematch', { roomId });
+}
+
 export function sendLobbyMessage(content: string) {
   socket?.emit('chat:lobby', { content });
 }
@@ -397,4 +523,20 @@ export function closePMChat() {
 // DEBUG: Cheat code to fast-forward to near-win
 export function cheatNearWin(roomId: string) {
   socket?.emit('game:cheat_nearwin', { roomId });
+}
+
+// Send game invite to a user
+export function sendInvite(roomId: string, targetUserId: string) {
+  socket?.emit('room:invite', { roomId, targetUserId });
+}
+
+// Dismiss a pending invite
+export function dismissInvite(roomId: string) {
+  pendingInvites.update(invites => invites.filter(i => i.roomId !== roomId));
+}
+
+// Accept an invite (just joins the room)
+export function acceptInvite(roomId: string) {
+  joinRoom(roomId);
+  dismissInvite(roomId);
 }

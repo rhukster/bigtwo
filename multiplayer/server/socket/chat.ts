@@ -52,11 +52,11 @@ function isRateLimited(userId: string): boolean {
   return false;
 }
 
-// Message history (in-memory, last 100 messages per channel)
+// Message history (in-memory, last 1000 messages per channel)
 const lobbyChat: ChatMessage[] = [];
 const roomChats = new Map<string, ChatMessage[]>();
 const privateChats = new Map<string, ChatMessage[]>(); // Key: sorted `${id1}:${id2}`
-const MAX_HISTORY = 100;
+const MAX_HISTORY = 1000;
 
 function getPMKey(userId1: string, userId2: string): string {
   return [userId1, userId2].sort().join(':');
@@ -149,13 +149,13 @@ export function setupChatHandlers(io: Server, socket: Socket, state: SharedState
 
   // Get lobby chat history
   socket.on('chat:get_lobby_history', (callback: (messages: ChatMessage[]) => void) => {
-    callback(lobbyChat.slice(-50)); // Last 50 messages
+    callback(lobbyChat.slice(-100)); // Last 100 messages
   });
 
   // Get room chat history
   socket.on('chat:get_room_history', (data: { roomId: string }, callback: (messages: ChatMessage[]) => void) => {
     const history = roomChats.get(data.roomId) || [];
-    callback(history.slice(-50));
+    callback(history.slice(-100)); // Last 100 messages
   });
 
   // Send private message

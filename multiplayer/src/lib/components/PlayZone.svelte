@@ -95,13 +95,15 @@
   /* Mobile adjustments */
   @media (max-width: 480px) {
     .play-zone {
-      padding: 6px;
-      border-radius: 8px;
+      padding: 4px;
+      border-radius: 6px;
+      flex: 0 1 auto; /* Don't grow excessively on mobile */
+      max-height: 40vh;
     }
 
     .play-info {
-      margin-bottom: 6px;
-      font-size: 0.75rem;
+      margin-bottom: 4px;
+      font-size: 0.7rem;
     }
 
     .play-type {
@@ -109,29 +111,31 @@
     }
 
     .played-cards {
-      gap: 2px;
+      gap: 1px;
     }
 
     .empty-play {
-      padding: 12px 20px;
-      font-size: 0.7rem;
+      padding: 8px 14px;
+      font-size: 0.65rem;
     }
   }
 
   /* Very small screens */
   @media (max-height: 500px) {
     .play-zone {
-      padding: 4px;
+      padding: 3px;
+      flex: 0 1 auto;
+      max-height: 30vh;
     }
 
     .play-info {
-      margin-bottom: 4px;
-      font-size: 0.65rem;
+      margin-bottom: 2px;
+      font-size: 0.6rem;
     }
 
     .empty-play {
-      padding: 8px 14px;
-      font-size: 0.6rem;
+      padding: 6px 10px;
+      font-size: 0.55rem;
     }
   }
 </style>
