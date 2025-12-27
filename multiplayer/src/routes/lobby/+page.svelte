@@ -140,8 +140,13 @@
   }
 
   function handleLeaveGame() {
+    console.log('[Lobby] handleLeaveGame called, currentRoom:', $currentRoom?.id);
     if ($currentRoom) {
       leaveGame($currentRoom.id);
+    } else {
+      console.warn('[Lobby] handleLeaveGame: No current room!');
+      // Fallback: clear state manually
+      gameState.set(null);
     }
   }
 </script>

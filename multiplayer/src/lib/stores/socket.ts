@@ -138,6 +138,7 @@ export function connectSocket(currentUser: User) {
   });
 
   socket.on('room:left', () => {
+    console.log('[Socket] room:left received, clearing state');
     currentRoom.set(null);
     gameState.set(null);
     readyCountdowns.set({});
@@ -363,6 +364,7 @@ export function passTurn(roomId: string) {
 }
 
 export function leaveGame(roomId: string) {
+  console.log('[Socket] leaveGame called, roomId:', roomId, 'socket connected:', socket?.connected);
   socket?.emit('game:leave', { roomId });
 }
 

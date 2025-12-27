@@ -475,6 +475,9 @@
   }
 
   .leave-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     background: rgba(0,0,0,0.5);
     border: 1px solid rgba(255,255,255,0.3);
     color: rgba(255,255,255,0.7);
