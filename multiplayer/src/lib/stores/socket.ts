@@ -391,3 +391,8 @@ export function openPMChat(userId: string, userName: string) {
 export function closePMChat() {
   activePMUser.set(null);
 }
+
+// DEBUG: Cheat code to fast-forward to near-win
+export function cheatNearWin(roomId: string) {
+  socket?.emit('game:cheat_nearwin', { roomId });
+}

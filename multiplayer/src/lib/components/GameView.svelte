@@ -18,8 +18,12 @@
     gameEndResult,
     clearGameEndResult,
     unreadRoomMessages,
-    setRoomChatOpen
+    setRoomChatOpen,
+    cheatNearWin,
+    leaveRoom
   } from '../stores/socket';
+  import { onMount } from 'svelte';
+  import confetti from 'canvas-confetti';
 
   interface Props {
     gameState: ClientGameState;
@@ -41,9 +45,45 @@
   // Track if current user won
   let isWinner = $derived($gameEndResult?.winnerId === userId);
 
+  // Trigger confetti when player wins
+  $effect(() => {
+    if (isWinner) {
+      // Realistic confetti burst effect
+      const count = 200;
+      const defaults = { origin: { y: 0.7 } };
+
+      function fire(particleRatio: number, opts: confetti.Options) {
+        confetti({
+          ...defaults,
+          ...opts,
+          particleCount: Math.floor(count * particleRatio)
+        });
+      }
+
+      fire(0.25, { spread: 26, startVelocity: 55 });
+      fire(0.2, { spread: 60 });
+      fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 });
+      fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 });
+      fire(0.1, { spread: 120, startVelocity: 45 });
+    }
+  });
+
   // Sync room chat open state for unread tracking
   $effect(() => {
     setRoomChatOpen(showRoomChat);
+  });
+
+  // DEBUG: Keyboard shortcut for cheat code (Ctrl+Shift+W)
+  onMount(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey && e.shiftKey && e.key === 'W') {
+        e.preventDefault();
+        console.log('[CHEAT] Near-win activated!');
+        cheatNearWin(roomId);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   });
 
   function handleSendRoomChat() {
@@ -376,6 +416,44 @@
       />
       <button type="submit" class="btn btn-primary btn-sm">Send</button>
     </form>
+  </div>
+{/if}
+
+<!-- Game End Screen -->
+{#if $gameEndResult}
+  <div class="game-end-overlay">
+    <div class="game-end-modal">
+      <div class="winner-announcement" class:is-you={isWinner}>
+        {#if isWinner}
+          <div class="trophy">🏆</div>
+          <h2>You Won!</h2>
+        {:else}
+          <h2>{$gameEndResult.winnerName} Wins!</h2>
+        {/if}
+      </div>
+
+      <div class="results-table">
+        <h3>Results</h3>
+        {#each $gameEndResult.results.sort((a, b) => b.pointsDelta - a.pointsDelta) as result}
+          <div class="result-row" class:winner={result.playerId === $gameEndResult.winnerId} class:you={result.playerId === userId}>
+            <span class="player-name">
+              {result.playerName}
+              {#if result.playerId === userId}(You){/if}
+            </span>
+            <span class="cards-left">
+              {result.cardsRemaining === 0 ? '🎉' : `${result.cardsRemaining} cards`}
+            </span>
+            <span class="points" class:positive={result.pointsDelta > 0} class:negative={result.pointsDelta < 0}>
+              {result.pointsDelta > 0 ? '+' : ''}{result.pointsDelta}
+            </span>
+          </div>
+        {/each}
+      </div>
+
+      <button class="btn btn-primary" onclick={() => { clearGameEndResult(); leaveRoom(); }}>
+        Back to Lobby
+      </button>
+    </div>
   </div>
 {/if}
 
@@ -1012,5 +1090,125 @@
     .room-chat {
       bottom: 20px;
     }
+  }
+
+  /* Game End Screen */
+  .game-end-overlay {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    pointer-events: none;
+  }
+
+  .game-end-modal {
+    background: var(--bg-dark, #1a1a1a);
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    border: 2px solid var(--gold, #d4af37);
+    max-width: 400px;
+    width: 90%;
+    z-index: 201;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+    pointer-events: auto;
+  }
+
+  .winner-announcement {
+    margin-bottom: 24px;
+  }
+
+  .winner-announcement.is-you h2 {
+    color: var(--gold, #d4af37);
+    font-size: 2rem;
+    animation: winner-glow 1s ease-in-out infinite alternate;
+  }
+
+  @keyframes winner-glow {
+    from {
+      text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+    }
+    to {
+      text-shadow: 0 0 20px rgba(212, 175, 55, 0.8), 0 0 30px rgba(212, 175, 55, 0.6);
+    }
+  }
+
+  .trophy {
+    font-size: 4rem;
+    animation: trophy-bounce 0.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes trophy-bounce {
+    from {
+      transform: translateY(0) scale(1);
+    }
+    to {
+      transform: translateY(-10px) scale(1.1);
+    }
+  }
+
+  .winner-announcement h2 {
+    margin: 12px 0 0;
+    color: white;
+    font-size: 1.5rem;
+  }
+
+  .results-table {
+    margin-bottom: 24px;
+  }
+
+  .results-table h3 {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9rem;
+    margin: 0 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+  }
+
+  .result-row.winner {
+    background: rgba(212, 175, 55, 0.2);
+    border: 1px solid var(--gold, #d4af37);
+  }
+
+  .result-row.you {
+    border-left: 3px solid var(--gold, #d4af37);
+  }
+
+  .result-row .player-name {
+    color: white;
+    font-weight: 500;
+  }
+
+  .result-row .cards-left {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.8rem;
+  }
+
+  .result-row .points {
+    font-weight: 600;
+    min-width: 50px;
+    text-align: right;
+  }
+
+  .result-row .points.positive {
+    color: #4CAF50;
+  }
+
+  .result-row .points.negative {
+    color: #f44336;
   }
 </style>

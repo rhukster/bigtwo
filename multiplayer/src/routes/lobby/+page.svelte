@@ -290,7 +290,7 @@
                         on:click={() => joinRoom(room.id)}
                         disabled={room.status !== 'waiting'}
                       >
-                        {room.status === 'waiting' ? 'Join' : 'In Game'}
+                        {room.status === 'waiting' ? 'Join' : room.status === 'finished' ? 'Finished' : 'In Game'}
                       </button>
                     </div>
                   {/each}

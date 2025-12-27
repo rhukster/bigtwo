@@ -369,6 +369,60 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
       setTimeout(() => processAiTurn(io, room, game), 1000);
     }
   });
+
+  // DEBUG: Cheat code to fast-forward to near-win state
+  socket.on('game:cheat_nearwin', (data: { roomId: string }) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) return;
+
+    const room = gameRooms.get(data.roomId);
+    if (!room || !room.gameId) return;
+
+    const game = activeGames.get(room.gameId);
+    if (!game || game.gameOver) return;
+
+    const playerIndex = game.players.findIndex(p => p.id === userId);
+    if (playerIndex === -1) return;
+
+    // Give this player just 1 random high card
+    const highCards: Card[] = [
+      { rank: '2', suit: '♠' },
+      { rank: '2', suit: '♥' },
+      { rank: 'A', suit: '♠' },
+      { rank: 'K', suit: '♠' }
+    ];
+    game.players[playerIndex].hand = [highCards[Math.floor(Math.random() * highCards.length)]];
+
+    // Give other players 2-3 cards each
+    for (let i = 0; i < game.players.length; i++) {
+      if (i !== playerIndex) {
+        const lowCards: Card[] = [
+          { rank: '3', suit: '♣' },
+          { rank: '4', suit: '♣' },
+          { rank: '5', suit: '♣' },
+        ];
+        game.players[i].hand = lowCards.slice(0, 2 + Math.floor(Math.random() * 2));
+      }
+    }
+
+    // Set current player to this player with control
+    game.currentPlayerIndex = playerIndex;
+    game.controlPlayerIndex = playerIndex;
+    game.currentPlay = null;
+    game.currentPlayType = null;
+    game.passCount = 0;
+    game.firstPlayMade = true;
+
+    console.log(`[Game] CHEAT: ${game.players[playerIndex].name} near-win state activated`);
+
+    // Send updated game state to all players (use room.players for current socketIds)
+    for (const p of room.players) {
+      if (!p.isAi && p.socketId) {
+        const clientState = createClientGameState(game, p.id);
+        io.to(p.socketId).emit('game:state', clientState);
+      }
+    }
+  });
 }
 
 function createClientGameState(game: ServerGameState, viewerId: string | null): ClientGameState {
@@ -631,12 +685,23 @@ function endGameWithWinner(io: Server, room: GameRoom, game: ServerGameState, wi
 
   // Update room status
   room.status = 'finished';
+  room.gameId = undefined; // Clear game reference
   io.emit('lobby:room_updated', room);
 
-  // Clean up
+  // Clean up game
   activeGames.delete(game.id);
 
   console.log(`[Game] Game ${game.id} ended. Winner: ${winner.name}`);
+
+  // Auto-delete room after 60 seconds if no one has left/rejoined
+  setTimeout(() => {
+    const existingRoom = gameRooms.get(room.id);
+    if (existingRoom && existingRoom.status === 'finished') {
+      gameRooms.delete(room.id);
+      io.emit('lobby:room_deleted', { roomId: room.id });
+      console.log(`[Game] Room ${room.code} auto-deleted after game finished`);
+    }
+  }, 60000);
 }
 
 export { activeGames };
