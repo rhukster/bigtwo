@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
+import { getUniqueBotName } from '../utils/botNames.js';
 import {
   dealCards,
   findStarterIndex,
@@ -169,9 +170,9 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
       return;
     }
 
-    // Check if all players are ready (except AI)
+    // Check if all players are ready (host and AI are always considered ready)
     const humanPlayers = room.players.filter(p => !p.isAi);
-    if (!humanPlayers.every(p => p.isReady || p.isHost)) {
+    if (!humanPlayers.every(p => p.isReady || p.isHost || p.id === room.hostId)) {
       socket.emit('error', { message: 'Not all players are ready' });
       return;
     }
@@ -179,10 +180,11 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
     // Fill with AI if enabled
     if (room.settings.fillWithAi) {
       while (room.players.length < room.settings.maxPlayers) {
-        const aiNumber = room.players.filter(p => p.isAi).length + 1;
+        const existingNames = room.players.map(p => p.name);
+        const botName = getUniqueBotName(existingNames);
         room.players.push({
           id: `ai-${nanoid(8)}`,
-          name: `CPU ${aiNumber}`,
+          name: botName,
           isReady: true,
           isHost: false,
           isAi: true,
@@ -539,17 +541,29 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
       return;
     }
 
-    console.log(`[Game] Rematch requested by ${userId} in room ${room.id}`);
+    console.log(`[Game] Rematch requested by ${userId} in room ${room.id}, hostId: ${room.hostId}`);
 
     // Reset room status
     room.status = 'waiting';
 
-    // Reset non-host human players to not ready, keep AI and host as ready
+    // Ensure host flag is set correctly and reset ready status
     for (const player of room.players) {
-      if (!player.isAi && !player.isHost) {
+      // Fix: ensure isHost flag matches room.hostId
+      const isActualHost = player.id === room.hostId;
+      console.log(`[Game] Rematch - Player ${player.name}: id=${player.id}, isActualHost=${isActualHost}, isAi=${player.isAi}`);
+
+      if (isActualHost) {
+        player.isHost = true;
+        player.isReady = true;
+        console.log(`[Game] Rematch - Set ${player.name} as host and ready`);
+      } else if (player.isAi) {
+        player.isReady = true;
+      } else {
         player.isReady = false;
       }
     }
+
+    console.log(`[Game] Rematch - Final player states:`, room.players.map(p => ({ name: p.name, isHost: p.isHost, isReady: p.isReady, isAi: p.isAi })));
 
     // Clear old game reference
     if (room.gameId) {
@@ -635,6 +649,7 @@ function createClientGameState(game: ServerGameState, viewerId: string | null): 
       id: p.id,
       name: p.name,
       isAi: p.isAi,
+      isGuest: p.isGuest,
       isReady: p.isReady,
       isConnected: p.isConnected,
       cardCount: p.hand.length
@@ -914,4 +929,4 @@ function endGameWithWinner(io: Server, room: GameRoom, game: ServerGameState, wi
   }, 60000);
 }
 
-export { activeGames };
+export { activeGames, createClientGameState };

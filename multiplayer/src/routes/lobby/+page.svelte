@@ -245,6 +245,7 @@
                     </div>
                     <div class="player-name">
                       {player.name}
+                      {#if player.isAi}<span class="bot-badge"><Icon name="robot" size="sm" /> Bot</span>{/if}
                       {#if player.isHost}<span class="host-badge">Host</span>{/if}
                     </div>
                     <div class="player-status">
@@ -259,7 +260,8 @@
                             <Icon name="x" size="sm" />
                           </button>
                         {/if}
-                      {:else if player.isReady}
+                      {:else if player.isReady || player.id === $currentRoom.hostId}
+                        <!-- Host is always ready (they control when to start) -->
                         <span class="ready-text"><Icon name="check" size="sm" /> Ready</span>
                       {:else if $readyCountdowns[player.id] !== undefined}
                         <span class="countdown-text"><Icon name="clock" size="sm" /> Auto-ready in {$readyCountdowns[player.id]}s</span>
@@ -1096,6 +1098,18 @@
     border-radius: 4px;
     font-size: 0.7rem;
     margin-left: 6px;
+  }
+
+  .bot-badge {
+    background: rgba(100, 149, 237, 0.2);
+    color: #6495ed;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    margin-left: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
   }
 
   .ready-text {

@@ -425,7 +425,10 @@
     {#each otherPlayers() as player}
       <div class="other-player {player.position}" class:current-turn={gameState.players[gameState.currentPlayer]?.id === player.id}>
         <div class="player-info">
-          <span class="player-name">{player.name}</span>
+          <span class="player-name">
+            {player.name}
+            {#if player.isAi}<span class="bot-badge"><Icon name="robot" size={12} /></span>{/if}
+          </span>
           <span class="card-count">{player.cardCount} cards</span>
         </div>
         <div class="card-backs">
@@ -1122,6 +1125,16 @@
     color: white;
     font-weight: 600;
     font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .bot-badge {
+    color: #6495ed;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
   }
 
   .card-count {

@@ -23,7 +23,7 @@ import { setupWebhook } from './webhook.js';
 
 // Import socket handlers
 import { setupLobbyHandlers } from './socket/lobby.js';
-import { setupGameHandlers } from './socket/game.js';
+import { setupGameHandlers, activeGames } from './socket/game.js';
 import { setupChatHandlers } from './socket/chat.js';
 
 // Import database (initializes on import)
@@ -184,10 +184,23 @@ io.on('connection', (socket) => {
     const userId = socketToUser.get(socket.id);
     if (userId) {
       const user = lobbyUsers.get(userId);
-      if (user) {
-        // Broadcast user left
+
+      // Check if user is in an active game - if so, don't remove them yet
+      let inActiveGame = false;
+      for (const room of gameRooms.values()) {
+        if (room.status === 'playing' && room.players.some(p => p.id === userId && !p.isAi)) {
+          inActiveGame = true;
+          break;
+        }
+      }
+
+      if (user && !inActiveGame) {
+        // Not in active game - broadcast user left and remove
         socket.broadcast.emit('lobby:user_left', { userId, userName: user.name });
         lobbyUsers.delete(userId);
+      } else if (user) {
+        // In active game - keep user in lobby but clear socket mapping
+        console.log(`[Socket] ${user.name} disconnected but in active game - keeping for reconnect`);
       }
       socketToUser.delete(socket.id);
     }
@@ -224,14 +237,27 @@ io.on('connection', (socket) => {
         } else if (room.status === 'playing' || room.status === 'finished') {
           // In active/finished game: transfer host to next human if needed
           if (wasHost) {
-            player.isHost = false;
             const nextHuman = room.players.find(p => !p.isAi && p.id !== player.id);
             if (nextHuman) {
+              // Transfer host to another human
+              player.isHost = false;
               nextHuman.isHost = true;
               nextHuman.isReady = true;  // Host is always ready
               room.hostId = nextHuman.id;
               room.hostName = nextHuman.name;
               console.log(`[Game] Host transferred to ${nextHuman.name} (disconnect)`);
+            }
+            // If no other human, keep this player as host (they might reconnect)
+          }
+
+          // Mark player as disconnected in game state
+          if (room.gameId) {
+            const game = activeGames.get(room.gameId);
+            if (game) {
+              const gamePlayer = game.players.find(p => p.id === player.id);
+              if (gamePlayer) {
+                gamePlayer.isConnected = false;
+              }
             }
           }
 

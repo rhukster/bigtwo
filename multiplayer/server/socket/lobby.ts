@@ -1,5 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
+import { getUniqueBotName } from '../utils/botNames.js';
+import { activeGames, createClientGameState } from './game.js';
 
 interface LobbyUser {
   id: string;
@@ -152,6 +154,62 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
       console.log(`[Lobby] ${userName} joined the lobby`);
     } else {
       console.log(`[Lobby] ${userName} reconnected`);
+    }
+
+    // Check if user was in a room and reconnect them
+    for (const [roomId, room] of gameRooms) {
+      const playerIndex = room.players.findIndex(p => p.id === userId && !p.isAi);
+      if (playerIndex !== -1) {
+        const player = room.players[playerIndex];
+        console.log(`[Lobby] ${userName} reconnecting to room ${room.code} (status: ${room.status})`);
+
+        // Update socket ID in room
+        player.socketId = socket.id;
+
+        // Fix: ensure isHost flag matches room.hostId and host is ready
+        const isActualHost = player.id === room.hostId;
+        if (isActualHost) {
+          player.isHost = true;
+          player.isReady = true;
+        }
+
+        // Join socket room
+        socket.join(roomId);
+        user.status = 'in-game';
+
+        // Check if there's an active game
+        if (room.gameId) {
+          const game = activeGames.get(room.gameId);
+          if (game && !game.gameOver) {
+            // Update connected status in game
+            const gamePlayer = game.players.find(p => p.id === userId);
+            if (gamePlayer) {
+              gamePlayer.isConnected = true;
+            }
+
+            // Send room and game state
+            socket.emit('room:joined', { room, asSpectator: false });
+            const clientState = createClientGameState(game, userId);
+            socket.emit('game:state', clientState);
+
+            console.log(`[Lobby] ${userName} rejoined active game ${game.id}`);
+          }
+        } else {
+          // No active game - just in room (waiting/finished)
+          socket.emit('room:joined', { room, asSpectator: false });
+
+          // Start auto-ready timer for non-host players
+          if (!player.isHost && !player.isReady) {
+            startAutoReadyTimer(io, roomId, userId, gameRooms);
+          }
+
+          console.log(`[Lobby] ${userName} rejoined room ${room.code}`);
+        }
+
+        // Broadcast updated room state to others
+        io.to(roomId).emit('room:updated', room);
+        break;
+      }
     }
   });
 
@@ -420,10 +478,11 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
       return;
     }
 
-    const aiNumber = room.players.filter(p => p.isAi).length + 1;
+    const existingNames = room.players.map(p => p.name);
+    const botName = getUniqueBotName(existingNames);
     room.players.push({
       id: `ai-${nanoid(8)}`,
-      name: `CPU ${aiNumber}`,
+      name: botName,
       isReady: true,
       isHost: false,
       isAi: true,
