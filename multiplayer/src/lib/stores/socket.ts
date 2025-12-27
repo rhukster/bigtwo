@@ -14,6 +14,33 @@ export const currentRoom = writable<Room | null>(null);
 export const gameState = writable<ClientGameState | null>(null);
 export const lobbyMessages = writable<ChatMessage[]>([]);
 export const roomMessages = writable<ChatMessage[]>([]);
+export const readyCountdowns = writable<Record<string, number>>({});  // playerId -> seconds left
+
+// Private messages: key is the other user's ID
+export interface PMMessage extends ChatMessage {
+  recipientId: string;
+  recipientName: string;
+}
+export const privateMessages = writable<Record<string, PMMessage[]>>({});  // otherUserId -> messages
+export const unreadPMs = writable<Set<string>>(new Set());  // Set of user IDs with unread messages
+export const activePMUser = writable<{ id: string; name: string } | null>(null);  // Currently open PM chat
+
+// Game end result
+export interface GameEndResult {
+  winnerId: string;
+  winnerName: string;
+  results: Array<{
+    playerId: string;
+    playerName: string;
+    cardsRemaining: number;
+    pointsDelta: number;
+  }>;
+}
+export const gameEndResult = writable<GameEndResult | null>(null);
+
+// Unread room messages count
+export const unreadRoomMessages = writable<number>(0);
+export const roomChatOpen = writable<boolean>(false);
 
 export function connectSocket(currentUser: User) {
   // Prevent multiple socket connections - check if socket exists at all
@@ -113,6 +140,7 @@ export function connectSocket(currentUser: User) {
   socket.on('room:left', () => {
     currentRoom.set(null);
     gameState.set(null);
+    readyCountdowns.set({});
   });
 
   socket.on('room:player_joined', ({ id, name }: { id: string; name: string }) => {
@@ -137,14 +165,35 @@ export function connectSocket(currentUser: User) {
         players: r.players.filter(p => p.id !== playerId)
       };
     });
+    // Clear countdown for left player
+    readyCountdowns.update(c => {
+      const newC = { ...c };
+      delete newC[playerId];
+      return newC;
+    });
+  });
+
+  socket.on('room:ready_countdown', ({ playerId, timeLeft }: { playerId: string; timeLeft: number }) => {
+    readyCountdowns.update(c => ({
+      ...c,
+      [playerId]: timeLeft
+    }));
   });
 
   // Game events
   socket.on('game:started', () => {
     console.log('[Game] Started');
+    readyCountdowns.set({});  // Clear all countdowns when game starts
   });
 
   socket.on('game:state', (state: ClientGameState) => {
+    console.log('[Socket] game:state received', {
+      currentPlayer: state.currentPlayer,
+      handLength: state.hand?.length,
+      currentPlay: state.currentPlay,
+      isFirstPlay: state.isFirstPlay,
+      controlPlayer: state.controlPlayer
+    });
     gameState.set(state);
   });
 
@@ -156,8 +205,9 @@ export function connectSocket(currentUser: User) {
     console.log('[Game] Pass:', data);
   });
 
-  socket.on('game:end', (data: any) => {
+  socket.on('game:end', (data: GameEndResult) => {
     console.log('[Game] End:', data);
+    gameEndResult.set(data);
   });
 
   // Chat events
@@ -178,6 +228,45 @@ export function connectSocket(currentUser: User) {
         return msgs;
       }
       return [...msgs, message];
+    });
+    // Increment unread if chat is closed and message is from someone else
+    if (!get(roomChatOpen) && message.senderId !== currentUser.id) {
+      unreadRoomMessages.update(n => n + 1);
+    }
+  });
+
+  // PM events
+  socket.on('chat:pm_received', (message: PMMessage) => {
+    const senderId = message.senderId;
+    privateMessages.update(pms => {
+      const existing = pms[senderId] || [];
+      // Don't add if message already exists
+      if (existing.some(m => m.id === message.id)) {
+        return pms;
+      }
+      return { ...pms, [senderId]: [...existing, message] };
+    });
+
+    // Mark as unread if PM chat isn't open for this user
+    const currentActivePM = get(activePMUser);
+    if (!currentActivePM || currentActivePM.id !== senderId) {
+      unreadPMs.update(set => {
+        const newSet = new Set(set);
+        newSet.add(senderId);
+        return newSet;
+      });
+    }
+  });
+
+  socket.on('chat:pm_sent', (message: PMMessage) => {
+    const recipientId = message.recipientId;
+    privateMessages.update(pms => {
+      const existing = pms[recipientId] || [];
+      // Don't add if message already exists
+      if (existing.some(m => m.id === message.id)) {
+        return pms;
+      }
+      return { ...pms, [recipientId]: [...existing, message] };
     });
   });
 
@@ -200,6 +289,13 @@ export function disconnectSocket() {
   gameState.set(null);
   lobbyMessages.set([]);
   roomMessages.set([]);
+  readyCountdowns.set({});
+  privateMessages.set({});
+  unreadPMs.set(new Set());
+  activePMUser.set(null);
+  gameEndResult.set(null);
+  unreadRoomMessages.set(0);
+  roomChatOpen.set(false);
 }
 
 // Socket actions
@@ -216,6 +312,20 @@ export function leaveRoom() {
   currentRoom.set(null);
   gameState.set(null);
   roomMessages.set([]);
+  gameEndResult.set(null);
+  unreadRoomMessages.set(0);
+  roomChatOpen.set(false);
+}
+
+export function setRoomChatOpen(open: boolean) {
+  roomChatOpen.set(open);
+  if (open) {
+    unreadRoomMessages.set(0);
+  }
+}
+
+export function clearGameEndResult() {
+  gameEndResult.set(null);
 }
 
 export function toggleReady(roomId: string, ready: boolean) {
@@ -235,11 +345,25 @@ export function startGame(roomId: string) {
 }
 
 export function playCards(roomId: string, cards: any[]) {
-  socket?.emit('game:play', { roomId, cards });
+  console.log('[Socket] playCards called', { roomId, cards, socketConnected: socket?.connected });
+  if (!socket) {
+    console.error('[Socket] No socket connection!');
+    return;
+  }
+  if (!socket.connected) {
+    console.error('[Socket] Socket not connected!');
+    return;
+  }
+  socket.emit('game:play', { roomId, cards });
+  console.log('[Socket] game:play emitted');
 }
 
 export function passTurn(roomId: string) {
   socket?.emit('game:pass', { roomId });
+}
+
+export function leaveGame(roomId: string) {
+  socket?.emit('game:leave', { roomId });
 }
 
 export function sendLobbyMessage(content: string) {
@@ -248,4 +372,22 @@ export function sendLobbyMessage(content: string) {
 
 export function sendRoomMessage(roomId: string, content: string) {
   socket?.emit('chat:room', { roomId, content });
+}
+
+export function sendPM(recipientId: string, content: string) {
+  socket?.emit('chat:pm', { recipientId, content });
+}
+
+export function openPMChat(userId: string, userName: string) {
+  activePMUser.set({ id: userId, name: userName });
+  // Clear unread for this user
+  unreadPMs.update(set => {
+    const newSet = new Set(set);
+    newSet.delete(userId);
+    return newSet;
+  });
+}
+
+export function closePMChat() {
+  activePMUser.set(null);
 }

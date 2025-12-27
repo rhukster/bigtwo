@@ -178,16 +178,37 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
 
   // Play cards
   socket.on('game:play', (data: { roomId: string; cards: Card[] }) => {
+    console.log('[Game] game:play received', { roomId: data.roomId, cards: data.cards });
+
     const userId = socketToUser.get(socket.id);
-    if (!userId) return;
+    if (!userId) {
+      console.log('[Game] No userId for socket');
+      socket.emit('error', { message: 'Session expired. Please rejoin the game.' });
+      return;
+    }
 
     const room = gameRooms.get(data.roomId);
-    if (!room || !room.gameId) return;
+    if (!room || !room.gameId) {
+      console.log('[Game] Room not found or no gameId', { room: room?.id, gameId: room?.gameId });
+      socket.emit('error', { message: 'Room not found. The game may have ended.' });
+      return;
+    }
 
     const game = activeGames.get(room.gameId);
-    if (!game || game.gameOver) return;
+    if (!game) {
+      console.log('[Game] Game not found', { gameId: room.gameId });
+      socket.emit('error', { message: 'Game not found. Please restart.' });
+      return;
+    }
+
+    if (game.gameOver) {
+      console.log('[Game] Game already over', { gameId: room.gameId });
+      socket.emit('error', { message: 'Game has already ended.' });
+      return;
+    }
 
     const playerIndex = game.players.findIndex(p => p.id === userId);
+    console.log('[Game] Player check', { userId, playerIndex, currentPlayerIndex: game.currentPlayerIndex });
     if (playerIndex === -1 || playerIndex !== game.currentPlayerIndex) {
       socket.emit('error', { message: 'Not your turn' });
       return;
@@ -196,9 +217,17 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
     const player = game.players[playerIndex];
     const selectedCards = data.cards;
 
+    console.log('[Game] Validating play', {
+      firstPlayMade: game.firstPlayMade,
+      currentPlay: game.currentPlay,
+      selectedCards,
+      playerHand: player.hand
+    });
+
     // Validate first play includes 3♦
     if (!game.firstPlayMade) {
       if (!includesThreeOfDiamonds(selectedCards)) {
+        console.log('[Game] Rejected: First play must include 3♦');
         socket.emit('error', { message: 'First play must include 3♦' });
         return;
       }
@@ -207,12 +236,14 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
     // Validate play type
     const playType = getPlayType(selectedCards);
     if (!playType) {
+      console.log('[Game] Rejected: Invalid combination');
       socket.emit('error', { message: 'Invalid combination' });
       return;
     }
 
     // Validate can beat current play
     if (game.currentPlay && !canBeat(selectedCards, game.currentPlay, game.currentPlayType)) {
+      console.log('[Game] Rejected: Must beat current play');
       socket.emit('error', { message: 'Must play same type but higher' });
       return;
     }
@@ -220,11 +251,13 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
     // Validate player has these cards
     for (const card of selectedCards) {
       if (!player.hand.some(c => c.rank === card.rank && c.suit === card.suit)) {
+        console.log('[Game] Rejected: Card not in hand', { card, hand: player.hand });
         socket.emit('error', { message: 'You don\'t have those cards' });
         return;
       }
     }
 
+    console.log('[Game] Play validated, executing');
     // Execute play
     executePlay(io, room, game, playerIndex, selectedCards, playType);
   });
@@ -232,13 +265,22 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
   // Pass turn
   socket.on('game:pass', (data: { roomId: string }) => {
     const userId = socketToUser.get(socket.id);
-    if (!userId) return;
+    if (!userId) {
+      socket.emit('error', { message: 'Session expired. Please rejoin the game.' });
+      return;
+    }
 
     const room = gameRooms.get(data.roomId);
-    if (!room || !room.gameId) return;
+    if (!room || !room.gameId) {
+      socket.emit('error', { message: 'Room not found. The game may have ended.' });
+      return;
+    }
 
     const game = activeGames.get(room.gameId);
-    if (!game || game.gameOver) return;
+    if (!game || game.gameOver) {
+      socket.emit('error', { message: 'Game not found or already ended.' });
+      return;
+    }
 
     const playerIndex = game.players.findIndex(p => p.id === userId);
     if (playerIndex === -1 || playerIndex !== game.currentPlayerIndex) {
@@ -253,6 +295,79 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
     }
 
     executePass(io, room, game, playerIndex);
+  });
+
+  // Leave game mid-play (replace with AI)
+  socket.on('game:leave', (data: { roomId: string }) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) return;
+
+    const room = gameRooms.get(data.roomId);
+    if (!room || !room.gameId) {
+      socket.emit('error', { message: 'Room not found' });
+      return;
+    }
+
+    const game = activeGames.get(room.gameId);
+    if (!game) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+
+    const playerIndex = game.players.findIndex(p => p.id === userId);
+    if (playerIndex === -1) {
+      socket.emit('error', { message: 'Not in this game' });
+      return;
+    }
+
+    const player = game.players[playerIndex];
+
+    // Replace player with AI
+    player.isAi = true;
+    player.name = `${player.name} (CPU)`;
+    player.isConnected = false;
+
+    // Remove from room player list and add as AI
+    const roomPlayerIndex = room.players.findIndex(p => p.id === userId);
+    if (roomPlayerIndex !== -1) {
+      room.players[roomPlayerIndex].isAi = true;
+      room.players[roomPlayerIndex].name = `${room.players[roomPlayerIndex].name} (CPU)`;
+    }
+
+    // Update user status
+    const user = lobbyUsers.get(userId);
+    if (user) {
+      user.status = 'online';
+    }
+
+    // Leave the socket room
+    socket.leave(room.id);
+
+    // Notify client they've left
+    socket.emit('room:left');
+
+    // Notify others in the game
+    io.to(room.id).emit('game:player_left', {
+      playerId: userId,
+      playerName: player.name
+    });
+
+    // Send updated game state to remaining players
+    for (const p of room.players) {
+      if (!p.isAi && p.socketId) {
+        const clientState = createClientGameState(game, p.id);
+        io.to(p.socketId).emit('game:state', clientState);
+      }
+    }
+
+    io.emit('lobby:room_updated', room);
+
+    console.log(`[Game] ${player.name} left game ${game.id}, replaced with AI`);
+
+    // If it was their turn, process AI turn
+    if (game.currentPlayerIndex === playerIndex && !game.gameOver) {
+      setTimeout(() => processAiTurn(io, room, game), 1000);
+    }
   });
 }
 

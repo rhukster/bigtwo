@@ -29,7 +29,9 @@ interface GameRoom {
     isReady: boolean;
     isHost: boolean;
     isAi: boolean;
+    isGuest: boolean;
     socketId?: string;
+    joinedAt: number;
   }>;
   spectators: Array<{
     id: string;
@@ -39,6 +41,66 @@ interface GameRoom {
   status: 'waiting' | 'playing' | 'finished';
   gameId: string | null;
   createdAt: Date;
+}
+
+// Auto-ready timer (30 seconds)
+const AUTO_READY_TIMEOUT = 30000;
+const readyTimers = new Map<string, NodeJS.Timeout>();  // key: `${roomId}:${playerId}`
+
+function startAutoReadyTimer(io: Server, roomId: string, playerId: string, gameRooms: Map<string, GameRoom>) {
+  const timerKey = `${roomId}:${playerId}`;
+
+  // Clear existing timer if any
+  if (readyTimers.has(timerKey)) {
+    clearInterval(readyTimers.get(timerKey)!);
+  }
+
+  let timeLeft = 30;
+
+  const timer = setInterval(() => {
+    const room = gameRooms.get(roomId);
+    if (!room || room.status !== 'waiting') {
+      clearInterval(timer);
+      readyTimers.delete(timerKey);
+      return;
+    }
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player || player.isReady || player.isHost) {
+      clearInterval(timer);
+      readyTimers.delete(timerKey);
+      return;
+    }
+
+    timeLeft--;
+
+    // Emit countdown update
+    io.to(roomId).emit('room:ready_countdown', {
+      playerId,
+      timeLeft
+    });
+
+    if (timeLeft <= 0) {
+      // Auto-ready the player
+      player.isReady = true;
+      clearInterval(timer);
+      readyTimers.delete(timerKey);
+
+      io.to(roomId).emit('room:updated', room);
+      io.emit('lobby:room_updated', room);
+      console.log(`[Room] ${player.name} was auto-readied in room ${room.code}`);
+    }
+  }, 1000);
+
+  readyTimers.set(timerKey, timer);
+}
+
+function clearAutoReadyTimer(roomId: string, playerId: string) {
+  const timerKey = `${roomId}:${playerId}`;
+  if (readyTimers.has(timerKey)) {
+    clearInterval(readyTimers.get(timerKey)!);
+    readyTimers.delete(timerKey);
+  }
 }
 
 interface SharedState {
@@ -143,7 +205,8 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
         isHost: true,
         isAi: false,
         isGuest: user.isGuest,
-        socketId: socket.id
+        socketId: socket.id,
+        joinedAt: Date.now()
       }],
       spectators: [],
       status: 'waiting',
@@ -231,7 +294,8 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
       isHost: false,
       isAi: false,
       isGuest: user.isGuest,
-      socketId: socket.id
+      socketId: socket.id,
+      joinedAt: Date.now()
     });
 
     socket.join(room.id);
@@ -244,6 +308,9 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
     });
 
     io.emit('lobby:room_updated', room);
+
+    // Start auto-ready timer for this player
+    startAutoReadyTimer(io, room.id, userId, gameRooms);
 
     console.log(`[Room] ${user.name} joined room ${room.code}`);
   });
@@ -262,6 +329,9 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
       if (playerIndex !== -1) {
         const player = room.players[playerIndex];
         room.players.splice(playerIndex, 1);
+
+        // Clear auto-ready timer if exists
+        clearAutoReadyTimer(roomId, userId);
 
         socket.leave(roomId);
         if (user) user.status = 'online';
@@ -315,6 +385,14 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
 
     player.isReady = data.ready;
 
+    // Clear auto-ready timer if player manually readied
+    if (data.ready) {
+      clearAutoReadyTimer(room.id, userId);
+    } else {
+      // If player un-readied, start timer again
+      startAutoReadyTimer(io, room.id, userId, gameRooms);
+    }
+
     io.to(room.id).emit('room:updated', room);
     io.emit('lobby:room_updated', room);
   });
@@ -345,7 +423,8 @@ export function setupLobbyHandlers(io: Server, socket: Socket, state: SharedStat
       isReady: true,
       isHost: false,
       isAi: true,
-      isGuest: false
+      isGuest: false,
+      joinedAt: Date.now()
     });
 
     io.to(room.id).emit('room:updated', room);

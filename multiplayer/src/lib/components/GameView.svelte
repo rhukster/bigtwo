@@ -4,15 +4,69 @@
   import Hand from './Hand.svelte';
   import PlayZone from './PlayZone.svelte';
   import { getPlayType, getPlayTypeName, canBeat, includesThreeOfDiamonds } from '../game/engine';
+  import {
+    roomMessages,
+    sendRoomMessage,
+    privateMessages,
+    unreadPMs,
+    activePMUser,
+    sendPM,
+    openPMChat,
+    closePMChat,
+    lobbyState,
+    user,
+    gameEndResult,
+    clearGameEndResult,
+    unreadRoomMessages,
+    setRoomChatOpen
+  } from '../stores/socket';
 
   interface Props {
     gameState: ClientGameState;
+    roomName: string;
+    roomId: string;
     userId: string;
     onPlay: (cards: CardType[]) => void;
     onPass: () => void;
+    onLeave: () => void;
   }
 
-  let { gameState, userId, onPlay, onPass }: Props = $props();
+  let { gameState, roomName, roomId, userId, onPlay, onPass, onLeave }: Props = $props();
+
+  let showLeaveConfirm = $state(false);
+  let showRoomChat = $state(false);
+  let roomChatInput = $state('');
+  let pmInput = $state('');
+
+  // Track if current user won
+  let isWinner = $derived($gameEndResult?.winnerId === userId);
+
+  // Sync room chat open state for unread tracking
+  $effect(() => {
+    setRoomChatOpen(showRoomChat);
+  });
+
+  function handleSendRoomChat() {
+    if (roomChatInput.trim() && roomId) {
+      sendRoomMessage(roomId, roomChatInput.trim());
+      roomChatInput = '';
+    }
+  }
+
+  function handleSendPM() {
+    if (pmInput.trim() && $activePMUser) {
+      sendPM($activePMUser.id, pmInput.trim());
+      pmInput = '';
+    }
+  }
+
+  function handleClickUser(oderId: string, userName: string) {
+    if (userId === oderId) return;
+    openPMChat(oderId, userName);
+  }
+
+  // Count total unread PMs
+  let totalUnread = $derived($unreadPMs.size);
 
   let selectedCards: CardType[] = $state([]);
 
@@ -51,10 +105,23 @@
   }
 
   function handlePlay() {
-    if (selectedCards.length === 0) return;
+    console.log('[GameView] handlePlay called', {
+      selectedCards,
+      isMyTurn,
+      isFirstPlay,
+      hasControl,
+      currentPlay,
+      currentPlayType
+    });
+
+    if (selectedCards.length === 0) {
+      console.log('[GameView] No cards selected');
+      return;
+    }
 
     // Validate play
     const playType = getPlayType(selectedCards);
+    console.log('[GameView] playType:', playType);
     if (!playType) {
       alert('Invalid card combination');
       return;
@@ -72,6 +139,7 @@
       return;
     }
 
+    console.log('[GameView] Calling onPlay with:', selectedCards);
     onPlay(selectedCards);
     selectedCards = [];
   }
@@ -116,6 +184,37 @@
 </script>
 
 <div class="game-view">
+  <!-- Top bar with leave and chat buttons -->
+  <div class="top-bar">
+    <button class="leave-btn" onclick={() => showLeaveConfirm = true}>
+      ✕ Leave
+    </button>
+    <div class="chat-toggles">
+      <button
+        class="chat-toggle-btn"
+        class:active={showRoomChat}
+        class:has-unread={$unreadRoomMessages > 0}
+        onclick={() => showRoomChat = !showRoomChat}
+      >
+        💬 Chat {#if $unreadRoomMessages > 0}<span class="unread-badge">{$unreadRoomMessages}</span>{/if}
+      </button>
+      <button
+        class="chat-toggle-btn"
+        class:has-unread={totalUnread > 0}
+        onclick={() => {
+          // If no active PM, show list of players to message
+          if (!$activePMUser && $lobbyState.users.length > 1) {
+            // Find first other user
+            const otherUser = $lobbyState.users.find(u => u.id !== userId);
+            if (otherUser) openPMChat(otherUser.id, otherUser.name);
+          }
+        }}
+      >
+        ✉️ DM {#if totalUnread > 0}<span class="unread-badge">{totalUnread}</span>{/if}
+      </button>
+    </div>
+  </div>
+
   <!-- Other players around the table -->
   <div class="other-players">
     {#each otherPlayers() as player}
@@ -188,11 +287,378 @@
   </div>
 </div>
 
+{#if showLeaveConfirm}
+  <div class="modal-overlay" onclick={() => showLeaveConfirm = false}>
+    <div class="modal" onclick={(e) => e.stopPropagation()}>
+      <h3>Leave Game?</h3>
+      <p>Your position will be replaced by an AI player. Are you sure you want to leave?</p>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick={() => showLeaveConfirm = false}>
+          Cancel
+        </button>
+        <button class="btn btn-danger" onclick={() => { showLeaveConfirm = false; onLeave(); }}>
+          Leave Game
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Room Chat Panel -->
+{#if showRoomChat}
+  <div class="chat-panel room-chat">
+    <div class="chat-panel-header">
+      <span class="chat-panel-title">💬 {roomName}</span>
+      <button class="chat-panel-close" onclick={() => showRoomChat = false}>✕</button>
+    </div>
+    <div class="chat-panel-messages">
+      {#each $roomMessages as msg}
+        <div class="chat-msg" class:own={msg.senderId === userId} class:system={msg.type === 'system'}>
+          <span class="chat-msg-sender">{msg.senderId === userId ? 'You' : msg.senderName}:</span>
+          <span class="chat-msg-content">{msg.content}</span>
+        </div>
+      {/each}
+      {#if $roomMessages.length === 0}
+        <p class="chat-empty">No messages yet</p>
+      {/if}
+    </div>
+    <form class="chat-panel-input" onsubmit={(e) => { e.preventDefault(); handleSendRoomChat(); }}>
+      <input
+        type="text"
+        bind:value={roomChatInput}
+        placeholder="Type a message..."
+        maxlength="500"
+      />
+      <button type="submit" class="btn btn-primary btn-sm">Send</button>
+    </form>
+  </div>
+{/if}
+
+<!-- PM Panel -->
+{#if $activePMUser}
+  <div class="chat-panel pm-chat">
+    <div class="chat-panel-header">
+      <span class="chat-panel-title">✉️ {$activePMUser.name}</span>
+      <button class="chat-panel-close" onclick={closePMChat}>✕</button>
+    </div>
+    <div class="chat-panel-users">
+      {#each $lobbyState.users.filter(u => u.id !== userId) as otherUser}
+        <button
+          class="user-pill"
+          class:active={$activePMUser?.id === otherUser.id}
+          class:has-unread={$unreadPMs.has(otherUser.id)}
+          onclick={() => openPMChat(otherUser.id, otherUser.name)}
+        >
+          {otherUser.name}
+          {#if $unreadPMs.has(otherUser.id)}
+            <span class="unread-dot"></span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+    <div class="chat-panel-messages">
+      {#each $privateMessages[$activePMUser.id] || [] as msg}
+        <div class="chat-msg" class:own={msg.senderId === userId}>
+          <span class="chat-msg-sender">{msg.senderId === userId ? 'You' : msg.senderName}:</span>
+          <span class="chat-msg-content">{msg.content}</span>
+        </div>
+      {/each}
+      {#if !($privateMessages[$activePMUser.id]?.length)}
+        <p class="chat-empty">No messages yet. Say hi!</p>
+      {/if}
+    </div>
+    <form class="chat-panel-input" onsubmit={(e) => { e.preventDefault(); handleSendPM(); }}>
+      <input
+        type="text"
+        bind:value={pmInput}
+        placeholder="Type a message..."
+        maxlength="500"
+      />
+      <button type="submit" class="btn btn-primary btn-sm">Send</button>
+    </form>
+  </div>
+{/if}
+
 <style>
+  .top-bar {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+  }
+
+  .leave-btn {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.7);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .leave-btn:hover {
+    background: rgba(220,53,69,0.8);
+    color: white;
+    border-color: #dc3545;
+  }
+
+  .chat-toggles {
+    display: flex;
+    gap: 8px;
+  }
+
+  .chat-toggle-btn {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.7);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .chat-toggle-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+  }
+
+  .chat-toggle-btn.active {
+    background: rgba(212,175,55,0.3);
+    border-color: var(--gold, #d4af37);
+    color: white;
+  }
+
+  .chat-toggle-btn.has-unread {
+    border-color: var(--gold, #d4af37);
+  }
+
+  .unread-badge {
+    background: var(--gold, #d4af37);
+    color: #1a1a1a;
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+
+  /* Chat Panels */
+  .chat-panel {
+    position: fixed;
+    bottom: 20px;
+    width: 300px;
+    max-height: 350px;
+    background: rgba(26, 26, 26, 0.95);
+    border-radius: 12px;
+    border: 1px solid rgba(212,175,55,0.3);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 50;
+  }
+
+  .room-chat {
+    right: 20px;
+  }
+
+  .pm-chat {
+    right: 340px;
+  }
+
+  .chat-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .chat-panel-title {
+    font-weight: 600;
+    color: var(--gold, #d4af37);
+    font-size: 0.85rem;
+  }
+
+  .chat-panel-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 2px;
+  }
+
+  .chat-panel-close:hover {
+    color: white;
+  }
+
+  .chat-panel-users {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .user-pill {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid transparent;
+    color: rgba(255,255,255,0.7);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .user-pill:hover {
+    background: rgba(255,255,255,0.2);
+  }
+
+  .user-pill.active {
+    background: rgba(212,175,55,0.2);
+    border-color: var(--gold, #d4af37);
+    color: white;
+  }
+
+  .user-pill.has-unread {
+    border-color: var(--gold, #d4af37);
+  }
+
+  .unread-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--gold, #d4af37);
+    border-radius: 50%;
+  }
+
+  .chat-panel-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    max-height: 180px;
+    min-height: 80px;
+  }
+
+  .chat-msg {
+    padding: 4px 0;
+    font-size: 0.8rem;
+  }
+
+  .chat-msg.own .chat-msg-sender {
+    color: #4CAF50;
+  }
+
+  .chat-msg.system {
+    opacity: 0.6;
+    font-style: italic;
+  }
+
+  .chat-msg-sender {
+    color: var(--gold, #d4af37);
+    font-weight: 500;
+    margin-right: 6px;
+  }
+
+  .chat-msg-content {
+    color: rgba(255,255,255,0.8);
+  }
+
+  .chat-empty {
+    color: rgba(255,255,255,0.4);
+    font-size: 0.8rem;
+    text-align: center;
+    margin: 16px 0;
+  }
+
+  .chat-panel-input {
+    display: flex;
+    gap: 6px;
+    padding: 10px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .chat-panel-input input {
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    color: white;
+  }
+
+  .chat-panel-input input::placeholder {
+    color: rgba(255,255,255,0.4);
+  }
+
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: 0.75rem;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal {
+    background: var(--bg-dark, #1a1a1a);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 350px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+
+  .modal h3 {
+    margin: 0 0 12px;
+    color: white;
+  }
+
+  .modal p {
+    margin: 0 0 20px;
+    color: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+  }
+
+  .modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .btn-danger {
+    background: #dc3545;
+    color: white;
+    border: none;
+  }
+
+  .btn-danger:hover {
+    background: #c82333;
+  }
+
   .game-view {
     display: flex;
     flex-direction: column;
     height: calc(100vh - 120px);
+    position: relative;
     height: calc(100dvh - 120px); /* Dynamic viewport height for mobile */
     max-height: calc(100vh - 120px);
     max-height: calc(100dvh - 120px);
@@ -503,6 +969,48 @@
     .btn {
       padding: 5px 12px;
       font-size: 0.7rem;
+    }
+  }
+
+  /* Mobile chat panels */
+  @media (max-width: 700px) {
+    .chat-panel {
+      width: 260px;
+    }
+
+    .pm-chat {
+      right: 20px;
+      bottom: 390px;
+    }
+
+    .chat-panel-messages {
+      max-height: 120px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .chat-toggles {
+      gap: 4px;
+    }
+
+    .chat-toggle-btn {
+      padding: 4px 8px;
+      font-size: 0.7rem;
+    }
+
+    .chat-panel {
+      width: calc(100vw - 40px);
+      left: 20px;
+      right: 20px;
+    }
+
+    .pm-chat {
+      bottom: auto;
+      top: 50px;
+    }
+
+    .room-chat {
+      bottom: 20px;
     }
   }
 </style>

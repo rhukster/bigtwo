@@ -55,7 +55,12 @@ function isRateLimited(userId: string): boolean {
 // Message history (in-memory, last 100 messages per channel)
 const lobbyChat: ChatMessage[] = [];
 const roomChats = new Map<string, ChatMessage[]>();
+const privateChats = new Map<string, ChatMessage[]>(); // Key: sorted `${id1}:${id2}`
 const MAX_HISTORY = 100;
+
+function getPMKey(userId1: string, userId2: string): string {
+  return [userId1, userId2].sort().join(':');
+}
 
 function addMessage(messages: ChatMessage[], message: ChatMessage) {
   messages.push(message);
@@ -150,6 +155,74 @@ export function setupChatHandlers(io: Server, socket: Socket, state: SharedState
   // Get room chat history
   socket.on('chat:get_room_history', (data: { roomId: string }, callback: (messages: ChatMessage[]) => void) => {
     const history = roomChats.get(data.roomId) || [];
+    callback(history.slice(-50));
+  });
+
+  // Send private message
+  socket.on('chat:pm', (data: { recipientId: string; content: string }) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) return;
+
+    const sender = lobbyUsers.get(userId);
+    if (!sender) return;
+
+    const recipient = lobbyUsers.get(data.recipientId);
+    if (!recipient) {
+      socket.emit('error', { message: 'User not found or offline' });
+      return;
+    }
+
+    // Rate limit check
+    if (isRateLimited(userId)) {
+      socket.emit('error', { message: 'Slow down! Too many messages.' });
+      return;
+    }
+
+    // Sanitize content
+    const content = data.content.trim().slice(0, 500);
+    if (!content) return;
+
+    const message: ChatMessage = {
+      id: nanoid(),
+      senderId: userId,
+      senderName: sender.name,
+      content,
+      timestamp: Date.now(),
+      type: 'user'
+    };
+
+    // Store in both users' history
+    const pmKey = getPMKey(userId, data.recipientId);
+    if (!privateChats.has(pmKey)) {
+      privateChats.set(pmKey, []);
+    }
+    addMessage(privateChats.get(pmKey)!, message);
+
+    // Send to recipient
+    io.to(recipient.socketId).emit('chat:pm_received', {
+      ...message,
+      recipientId: data.recipientId,
+      recipientName: recipient.name
+    });
+
+    // Send confirmation back to sender
+    socket.emit('chat:pm_sent', {
+      ...message,
+      recipientId: data.recipientId,
+      recipientName: recipient.name
+    });
+  });
+
+  // Get PM history with a user
+  socket.on('chat:get_pm_history', (data: { otherUserId: string }, callback: (messages: ChatMessage[]) => void) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) {
+      callback([]);
+      return;
+    }
+
+    const pmKey = getPMKey(userId, data.otherUserId);
+    const history = privateChats.get(pmKey) || [];
     callback(history.slice(-50));
   });
 }

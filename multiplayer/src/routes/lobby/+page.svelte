@@ -18,7 +18,15 @@
     passTurn,
     sendLobbyMessage,
     lobbyMessages,
-    disconnectSocket
+    disconnectSocket,
+    readyCountdowns,
+    leaveGame,
+    privateMessages,
+    unreadPMs,
+    activePMUser,
+    sendPM,
+    openPMChat,
+    closePMChat
   } from '$lib/stores/socket';
   import GameView from '$lib/components/GameView.svelte';
   import type { Card } from '$lib/game/types';
@@ -30,6 +38,21 @@
   let aiDifficulty: 'easy' | 'medium' | 'hard' = 'medium';
   let chatInput = '';
   let joinCode = '';
+  let isPrivate = false;
+  let pmInput = '';
+
+  function handleSendPM() {
+    if (pmInput.trim() && $activePMUser) {
+      sendPM($activePMUser.id, pmInput.trim());
+      pmInput = '';
+    }
+  }
+
+  function handleClickUser(userId: string, userName: string) {
+    // Don't open PM with yourself
+    if (userId === $user?.id) return;
+    openPMChat(userId, userName);
+  }
 
   onMount(async () => {
     // Check auth
@@ -57,11 +80,12 @@
       allowSpectators: false,
       fillWithAi,
       aiDifficulty,
-      isPrivate: false,
+      isPrivate,
       turnTimeLimit: null
     });
     showCreateRoom = false;
     roomName = '';
+    isPrivate = false;
   }
 
   function handleJoinByCode() {
@@ -88,14 +112,34 @@
   }
 
   function handlePlayCards(cards: Card[]) {
+    console.log('[Lobby] handlePlayCards called', {
+      cards,
+      currentRoom: $currentRoom,
+      roomId: $currentRoom?.id,
+      userId: $user?.id,
+      gameState: $gameState ? {
+        currentPlayer: $gameState.currentPlayer,
+        controlPlayer: $gameState.controlPlayer,
+        handLength: $gameState.hand?.length,
+        currentPlay: $gameState.currentPlay
+      } : null
+    });
     if ($currentRoom) {
       playCards($currentRoom.id, cards);
+    } else {
+      console.error('[Lobby] No current room! Cannot play cards.');
     }
   }
 
   function handlePassTurn() {
     if ($currentRoom) {
       passTurn($currentRoom.id);
+    }
+  }
+
+  function handleLeaveGame() {
+    if ($currentRoom) {
+      leaveGame($currentRoom.id);
     }
   }
 </script>
@@ -124,120 +168,136 @@
 
   <main class="lobby-main">
     {#if $gameState}
-      <!-- Game View -->
+      <!-- Game View - Full Screen -->
       <GameView
         gameState={$gameState}
+        roomName={$currentRoom?.name || 'Game'}
+        roomId={$currentRoom?.id || ''}
         userId={$user?.id || ''}
         onPlay={handlePlayCards}
         onPass={handlePassTurn}
+        onLeave={handleLeaveGame}
       />
-    {:else if $currentRoom}
-      <!-- Room View -->
-      <div class="room-view">
-        <div class="room-header">
-          <button class="back-btn" on:click={leaveRoom}>← Back to Lobby</button>
-          <h2>{$currentRoom.name}</h2>
-          <div class="room-code">
-            Code: <strong>{$currentRoom.code}</strong>
-          </div>
-        </div>
+    {:else}
+      <!-- Lobby/Room View with Sidebar -->
+      <div class="lobby-content">
+        <div class="main-section">
+          {#if $currentRoom}
+            <!-- Room View -->
+            <div class="room-view">
+              <div class="room-header">
+                <button class="back-btn" on:click={leaveRoom}>← Back to Lobby</button>
+                <h2>{$currentRoom.name}</h2>
+                <div class="room-visibility-badge" class:private={$currentRoom.settings.isPrivate}>
+                  {$currentRoom.settings.isPrivate ? '🔒 Invite Only' : '🌐 Open'}
+                </div>
+                <div class="room-code">
+                  Code: <strong>{$currentRoom.code}</strong>
+                  <button class="copy-btn" on:click={() => navigator.clipboard.writeText($currentRoom?.code || '')}>
+                    📋 Copy
+                  </button>
+                </div>
+              </div>
 
-        <div class="players-grid">
-          {#each $currentRoom.players as player, i}
-            <div class="player-slot" class:ready={player.isReady} class:host={player.isHost}>
-              <div class="player-avatar">
-                {player.isAi ? '🤖' : '👤'}
+              <div class="players-grid">
+                {#each $currentRoom.players as player, i}
+                  <div class="player-slot" class:ready={player.isReady} class:host={player.isHost}>
+                    <div class="player-avatar">
+                      {player.isAi ? '🤖' : '👤'}
+                    </div>
+                    <div class="player-name">
+                      {player.name}
+                      {#if player.isHost}<span class="host-badge">Host</span>{/if}
+                    </div>
+                    <div class="player-status">
+                      {#if player.isAi}
+                        <span class="ready-text">Ready</span>
+                      {:else if player.isReady}
+                        <span class="ready-text">Ready</span>
+                      {:else if $readyCountdowns[player.id] !== undefined}
+                        <span class="countdown-text">Auto-ready in {$readyCountdowns[player.id]}s</span>
+                      {:else}
+                        <span class="waiting-text">Waiting...</span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+
+                {#each Array($currentRoom.settings.maxPlayers - $currentRoom.players.length) as _, i}
+                  <div class="player-slot empty">
+                    <div class="player-avatar">❓</div>
+                    <div class="player-name">Empty Slot</div>
+                    {#if $currentRoom.hostId === $user?.id}
+                      <button class="btn btn-secondary btn-sm" on:click={() => addAi($currentRoom?.id || '')}>
+                        + Add AI
+                      </button>
+                    {/if}
+                  </div>
+                {/each}
               </div>
-              <div class="player-name">
-                {player.name}
-                {#if player.isHost}<span class="host-badge">Host</span>{/if}
-              </div>
-              <div class="player-status">
-                {#if player.isAi}
-                  <span class="ready-text">Ready</span>
-                {:else if player.isReady}
-                  <span class="ready-text">Ready</span>
+
+              <div class="room-actions">
+                {#if $currentRoom.hostId === $user?.id}
+                  <button
+                    class="btn btn-primary"
+                    on:click={() => startGame($currentRoom?.id || '')}
+                    disabled={$currentRoom.players.length < 2}
+                  >
+                    Start Game
+                  </button>
                 {:else}
-                  <span class="waiting-text">Waiting...</span>
+                  <button
+                    class="btn btn-success"
+                    on:click={() => toggleReady($currentRoom?.id || '', !$currentRoom?.players.find(p => p.id === $user?.id)?.isReady)}
+                  >
+                    {$currentRoom.players.find(p => p.id === $user?.id)?.isReady ? 'Not Ready' : 'Ready'}
+                  </button>
                 {/if}
               </div>
             </div>
-          {/each}
-
-          {#each Array($currentRoom.settings.maxPlayers - $currentRoom.players.length) as _, i}
-            <div class="player-slot empty">
-              <div class="player-avatar">❓</div>
-              <div class="player-name">Empty Slot</div>
-              {#if $currentRoom.hostId === $user?.id}
-                <button class="btn btn-secondary btn-sm" on:click={() => addAi($currentRoom?.id || '')}>
-                  + Add AI
-                </button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-
-        <div class="room-actions">
-          {#if $currentRoom.hostId === $user?.id}
-            <button
-              class="btn btn-primary"
-              on:click={() => startGame($currentRoom?.id || '')}
-              disabled={$currentRoom.players.length < 2}
-            >
-              Start Game
-            </button>
           {:else}
-            <button
-              class="btn btn-success"
-              on:click={() => toggleReady($currentRoom?.id || '', !$currentRoom?.players.find(p => p.id === $user?.id)?.isReady)}
-            >
-              {$currentRoom.players.find(p => p.id === $user?.id)?.isReady ? 'Not Ready' : 'Ready'}
-            </button>
+            <!-- Lobby Rooms List -->
+            <div class="rooms-section">
+              <div class="section-header">
+                <h2>🎮 Game Rooms</h2>
+                <button class="btn btn-primary" on:click={() => showCreateRoom = true}>
+                  + Create Room
+                </button>
+              </div>
+
+              <div class="join-by-code">
+                <input
+                  type="text"
+                  bind:value={joinCode}
+                  placeholder="Enter room code..."
+                  maxlength="6"
+                />
+                <button class="btn btn-secondary" on:click={handleJoinByCode}>Join</button>
+              </div>
+
+              <div class="rooms-list">
+                {#if $lobbyState.rooms.length === 0}
+                  <p class="text-muted text-center">No rooms available. Create one!</p>
+                {:else}
+                  {#each $lobbyState.rooms as room}
+                    <div class="room-card">
+                      <div class="room-info">
+                        <h3>{room.name}</h3>
+                        <p>{room.players.length}/{room.settings.maxPlayers} players</p>
+                      </div>
+                      <button
+                        class="btn btn-secondary"
+                        on:click={() => joinRoom(room.id)}
+                        disabled={room.status !== 'waiting'}
+                      >
+                        {room.status === 'waiting' ? 'Join' : 'In Game'}
+                      </button>
+                    </div>
+                  {/each}
+                {/if}
+              </div>
+            </div>
           {/if}
-        </div>
-      </div>
-    {:else}
-      <!-- Lobby View -->
-      <div class="lobby-content">
-        <div class="rooms-section">
-          <div class="section-header">
-            <h2>🎮 Game Rooms</h2>
-            <button class="btn btn-primary" on:click={() => showCreateRoom = true}>
-              + Create Room
-            </button>
-          </div>
-
-          <div class="join-by-code">
-            <input
-              type="text"
-              bind:value={joinCode}
-              placeholder="Enter room code..."
-              maxlength="6"
-            />
-            <button class="btn btn-secondary" on:click={handleJoinByCode}>Join</button>
-          </div>
-
-          <div class="rooms-list">
-            {#if $lobbyState.rooms.length === 0}
-              <p class="text-muted text-center">No rooms available. Create one!</p>
-            {:else}
-              {#each $lobbyState.rooms as room}
-                <div class="room-card">
-                  <div class="room-info">
-                    <h3>{room.name}</h3>
-                    <p>{room.players.length}/{room.settings.maxPlayers} players</p>
-                  </div>
-                  <button
-                    class="btn btn-secondary"
-                    on:click={() => joinRoom(room.id)}
-                    disabled={room.status !== 'waiting'}
-                  >
-                    {room.status === 'waiting' ? 'Join' : 'In Game'}
-                  </button>
-                </div>
-              {/each}
-            {/if}
-          </div>
         </div>
 
         <div class="sidebar">
@@ -245,10 +305,25 @@
             <h3>👥 Online ({$lobbyState.users.length})</h3>
             <ul>
               {#each $lobbyState.users as onlineUser}
-                <li class:in-game={onlineUser.status === 'in-game'}>
-                  {onlineUser.name}
+                <li
+                  class:in-game={onlineUser.status === 'in-game'}
+                  class:clickable={onlineUser.id !== $user?.id}
+                  class:has-unread={$unreadPMs.has(onlineUser.id)}
+                  on:click={() => handleClickUser(onlineUser.id, onlineUser.name)}
+                >
+                  <span class="user-name-row">
+                    {onlineUser.name}
+                    {#if onlineUser.id === $user?.id}
+                      <span class="you-badge">(you)</span>
+                    {/if}
+                    {#if $unreadPMs.has(onlineUser.id)}
+                      <span class="unread-dot"></span>
+                    {/if}
+                  </span>
                   {#if onlineUser.status === 'in-game'}
                     <span class="status-badge">In Game</span>
+                  {:else if onlineUser.id !== $user?.id}
+                    <span class="pm-hint">💬</span>
                   {/if}
                 </li>
               {/each}
@@ -256,7 +331,7 @@
           </div>
 
           <div class="chat-section">
-            <h3>💬 Lobby Chat</h3>
+            <h3>💬 {$currentRoom ? `${$currentRoom.name} Chat` : 'Lobby Chat'}</h3>
             <div class="chat-messages">
               {#each $lobbyMessages as msg}
                 <div class="chat-message" class:system={msg.type === 'system'}>
@@ -301,6 +376,30 @@
       </div>
 
       <div class="form-group">
+        <label>Room Visibility</label>
+        <div class="visibility-options">
+          <button
+            type="button"
+            class="visibility-btn"
+            class:active={!isPrivate}
+            on:click={() => isPrivate = false}
+          >
+            🌐 Open
+            <span class="visibility-desc">Anyone can join</span>
+          </button>
+          <button
+            type="button"
+            class="visibility-btn"
+            class:active={isPrivate}
+            on:click={() => isPrivate = true}
+          >
+            🔒 Invite Only
+            <span class="visibility-desc">Requires room code</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-group">
         <label>
           <input type="checkbox" bind:checked={fillWithAi} />
           Fill empty slots with AI
@@ -323,6 +422,35 @@
         <button class="btn btn-primary" on:click={handleCreateRoom}>Create</button>
       </div>
     </div>
+  </div>
+{/if}
+
+{#if $activePMUser && !$gameState}
+  <div class="pm-panel">
+    <div class="pm-header">
+      <span class="pm-title">💬 {$activePMUser.name}</span>
+      <button class="pm-close" on:click={closePMChat}>✕</button>
+    </div>
+    <div class="pm-messages">
+      {#each $privateMessages[$activePMUser.id] || [] as msg}
+        <div class="pm-message" class:sent={msg.senderId === $user?.id}>
+          <span class="pm-sender">{msg.senderId === $user?.id ? 'You' : msg.senderName}:</span>
+          <span class="pm-content">{msg.content}</span>
+        </div>
+      {/each}
+      {#if !($privateMessages[$activePMUser.id]?.length)}
+        <p class="pm-empty">No messages yet. Say hi!</p>
+      {/if}
+    </div>
+    <form class="pm-input" on:submit|preventDefault={handleSendPM}>
+      <input
+        type="text"
+        bind:value={pmInput}
+        placeholder="Type a message..."
+        maxlength="500"
+      />
+      <button type="submit" class="btn btn-primary btn-sm">Send</button>
+    </form>
   </div>
 {/if}
 
@@ -417,8 +545,12 @@
     text-transform: uppercase;
   }
 
-  .rooms-section {
+  .main-section {
     overflow-y: auto;
+    height: 100%;
+  }
+
+  .rooms-section {
     height: 100%;
   }
 
@@ -569,6 +701,38 @@
     letter-spacing: 2px;
   }
 
+  .room-visibility-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    background: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+    margin-bottom: 8px;
+  }
+
+  .room-visibility-badge.private {
+    background: rgba(255, 152, 0, 0.2);
+    color: #ff9800;
+  }
+
+  .copy-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.6);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    transition: all 0.2s;
+  }
+
+  .copy-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+  }
+
   .back-btn {
     background: none;
     border: none;
@@ -632,6 +796,17 @@
     color: rgba(255,255,255,0.4);
   }
 
+  .countdown-text {
+    color: #ff9800;
+    font-size: 0.85rem;
+    animation: pulse 1s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
   .room-actions {
     text-align: center;
   }
@@ -686,6 +861,173 @@
     gap: 12px;
     justify-content: flex-end;
     margin-top: 24px;
+  }
+
+  .visibility-options {
+    display: flex;
+    gap: 8px;
+  }
+
+  .visibility-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+    background: var(--bg-darker);
+    border: 2px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    cursor: pointer;
+    color: rgba(255,255,255,0.7);
+    transition: all 0.2s;
+    font-size: 0.9rem;
+  }
+
+  .visibility-btn:hover {
+    border-color: rgba(255,255,255,0.3);
+  }
+
+  .visibility-btn.active {
+    border-color: var(--gold);
+    background: rgba(212,175,55,0.1);
+    color: white;
+  }
+
+  .visibility-desc {
+    font-size: 0.7rem;
+    margin-top: 4px;
+    opacity: 0.6;
+  }
+
+  /* Clickable users for PM */
+  .online-users li.clickable {
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .online-users li.clickable:hover {
+    background: rgba(255,255,255,0.1);
+  }
+
+  .online-users li.has-unread {
+    background: rgba(212,175,55,0.1);
+  }
+
+  .user-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .you-badge {
+    font-size: 0.7rem;
+    opacity: 0.5;
+  }
+
+  .unread-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--gold);
+    border-radius: 50%;
+    animation: pulse 1s infinite;
+  }
+
+  .pm-hint {
+    font-size: 0.75rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .online-users li.clickable:hover .pm-hint {
+    opacity: 0.6;
+  }
+
+  /* PM Panel */
+  .pm-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 320px;
+    max-height: 400px;
+    background: var(--bg-dark);
+    border-radius: 12px;
+    border: 1px solid rgba(212,175,55,0.3);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 50;
+  }
+
+  .pm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .pm-title {
+    font-weight: 600;
+    color: var(--gold);
+  }
+
+  .pm-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 4px;
+  }
+
+  .pm-close:hover {
+    color: white;
+  }
+
+  .pm-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    max-height: 280px;
+    min-height: 100px;
+  }
+
+  .pm-message {
+    padding: 6px 0;
+    font-size: 0.85rem;
+  }
+
+  .pm-message.sent .pm-sender {
+    color: #4CAF50;
+  }
+
+  .pm-sender {
+    color: var(--gold);
+    font-weight: 500;
+    margin-right: 6px;
+  }
+
+  .pm-content {
+    color: rgba(255,255,255,0.8);
+  }
+
+  .pm-empty {
+    color: rgba(255,255,255,0.4);
+    font-size: 0.85rem;
+    text-align: center;
+    margin: 20px 0;
+  }
+
+  .pm-input {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .pm-input input {
+    flex: 1;
+    font-size: 0.85rem;
   }
 
   @media (max-width: 900px) {
