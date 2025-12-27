@@ -294,7 +294,7 @@ export function setupGameHandlers(io: Server, socket: Socket, state: SharedState
       return;
     }
 
-    executePass(io, room, game, playerIndex);
+    executePass(io, room, game, gameRooms, playerIndex);
   });
 
   // Leave game mid-play (replace with AI)
@@ -502,10 +502,10 @@ function executePlay(
   }
 
   // Move to next player
-  nextTurn(io, room, game);
+  nextTurn(io, room, game, gameRooms);
 }
 
-function executePass(io: Server, room: GameRoom, game: ServerGameState, playerIndex: number) {
+function executePass(io: Server, room: GameRoom, game: ServerGameState, gameRooms: Map<string, GameRoom>, playerIndex: number) {
   const player = game.players[playerIndex];
 
   game.passCount++;
@@ -529,10 +529,10 @@ function executePass(io: Server, room: GameRoom, game: ServerGameState, playerIn
     });
   }
 
-  nextTurn(io, room, game);
+  nextTurn(io, room, game, gameRooms);
 }
 
-function nextTurn(io: Server, room: GameRoom, game: ServerGameState) {
+function nextTurn(io: Server, room: GameRoom, game: ServerGameState, gameRooms: Map<string, GameRoom>) {
   game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
 
   // Send updated state to all players
@@ -579,7 +579,7 @@ function processAiTurn(io: Server, room: GameRoom, game: ServerGameState, gameRo
     const playType = getPlayType(play)!;
     executePlay(io, room, game, gameRooms, playerIndex, play, playType);
   } else {
-    executePass(io, room, game, playerIndex);
+    executePass(io, room, game, gameRooms, playerIndex);
   }
 }
 
