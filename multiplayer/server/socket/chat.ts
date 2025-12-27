@@ -1,0 +1,174 @@
+import type { Server, Socket } from 'socket.io';
+import { nanoid } from 'nanoid';
+
+interface LobbyUser {
+  id: string;
+  name: string;
+  socketId: string;
+  status: 'online' | 'in-game';
+  isGuest: boolean;
+}
+
+interface GameRoom {
+  id: string;
+  code: string;
+  players: Array<{ id: string; name: string; socketId?: string }>;
+  spectators: Array<{ id: string; name: string; socketId: string }>;
+}
+
+interface SharedState {
+  lobbyUsers: Map<string, LobbyUser>;
+  gameRooms: Map<string, GameRoom>;
+  socketToUser: Map<string, string>;
+}
+
+interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  timestamp: number;
+  type: 'user' | 'system';
+}
+
+// Rate limiting: max 10 messages per 10 seconds per user
+const rateLimits = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW = 10000; // 10 seconds
+const RATE_LIMIT_MAX = 10;
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = rateLimits.get(userId) || [];
+
+  // Remove old timestamps
+  const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW);
+
+  if (recent.length >= RATE_LIMIT_MAX) {
+    return true;
+  }
+
+  recent.push(now);
+  rateLimits.set(userId, recent);
+  return false;
+}
+
+// Message history (in-memory, last 100 messages per channel)
+const lobbyChat: ChatMessage[] = [];
+const roomChats = new Map<string, ChatMessage[]>();
+const MAX_HISTORY = 100;
+
+function addMessage(messages: ChatMessage[], message: ChatMessage) {
+  messages.push(message);
+  if (messages.length > MAX_HISTORY) {
+    messages.shift();
+  }
+}
+
+export function setupChatHandlers(io: Server, socket: Socket, state: SharedState) {
+  const { lobbyUsers, gameRooms, socketToUser } = state;
+
+  // Send message to lobby
+  socket.on('chat:lobby', (data: { content: string }) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) return;
+
+    const user = lobbyUsers.get(userId);
+    if (!user) return;
+
+    // Rate limit check
+    if (isRateLimited(userId)) {
+      socket.emit('error', { message: 'Slow down! Too many messages.' });
+      return;
+    }
+
+    // Sanitize content
+    const content = data.content.trim().slice(0, 500);
+    if (!content) return;
+
+    const message: ChatMessage = {
+      id: nanoid(),
+      senderId: userId,
+      senderName: user.name,
+      content,
+      timestamp: Date.now(),
+      type: 'user'
+    };
+
+    addMessage(lobbyChat, message);
+    io.emit('chat:lobby_message', message);
+  });
+
+  // Send message to room
+  socket.on('chat:room', (data: { roomId: string; content: string }) => {
+    const userId = socketToUser.get(socket.id);
+    if (!userId) return;
+
+    const user = lobbyUsers.get(userId);
+    if (!user) return;
+
+    const room = gameRooms.get(data.roomId);
+    if (!room) return;
+
+    // Check user is in room
+    const isInRoom = room.players.some(p => p.id === userId) ||
+      room.spectators.some(s => s.id === userId);
+    if (!isInRoom) return;
+
+    // Rate limit check
+    if (isRateLimited(userId)) {
+      socket.emit('error', { message: 'Slow down! Too many messages.' });
+      return;
+    }
+
+    // Sanitize content
+    const content = data.content.trim().slice(0, 500);
+    if (!content) return;
+
+    const message: ChatMessage = {
+      id: nanoid(),
+      senderId: userId,
+      senderName: user.name,
+      content,
+      timestamp: Date.now(),
+      type: 'user'
+    };
+
+    // Get or create room chat history
+    if (!roomChats.has(data.roomId)) {
+      roomChats.set(data.roomId, []);
+    }
+    addMessage(roomChats.get(data.roomId)!, message);
+
+    io.to(data.roomId).emit('chat:room_message', message);
+  });
+
+  // Get lobby chat history
+  socket.on('chat:get_lobby_history', (callback: (messages: ChatMessage[]) => void) => {
+    callback(lobbyChat.slice(-50)); // Last 50 messages
+  });
+
+  // Get room chat history
+  socket.on('chat:get_room_history', (data: { roomId: string }, callback: (messages: ChatMessage[]) => void) => {
+    const history = roomChats.get(data.roomId) || [];
+    callback(history.slice(-50));
+  });
+}
+
+// System message helper (for game events)
+export function sendSystemMessage(io: Server, roomId: string, content: string) {
+  const message: ChatMessage = {
+    id: nanoid(),
+    senderId: 'system',
+    senderName: 'System',
+    content,
+    timestamp: Date.now(),
+    type: 'system'
+  };
+
+  if (!roomChats.has(roomId)) {
+    roomChats.set(roomId, []);
+  }
+  addMessage(roomChats.get(roomId)!, message);
+
+  io.to(roomId).emit('chat:room_message', message);
+}

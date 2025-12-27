@@ -1,0 +1,700 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import {
+    user,
+    connected,
+    lobbyState,
+    currentRoom,
+    gameState,
+    connectSocket,
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    toggleReady,
+    addAi,
+    startGame,
+    playCards,
+    passTurn,
+    sendLobbyMessage,
+    lobbyMessages,
+    disconnectSocket
+  } from '$lib/stores/socket';
+  import GameView from '$lib/components/GameView.svelte';
+  import type { Card } from '$lib/game/types';
+
+  let showCreateRoom = false;
+  let roomName = '';
+  let maxPlayers: 2 | 3 | 4 = 4;
+  let fillWithAi = true;
+  let aiDifficulty: 'easy' | 'medium' | 'hard' = 'medium';
+  let chatInput = '';
+  let joinCode = '';
+
+  onMount(async () => {
+    // Check auth
+    if (!$user) {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.user) {
+          user.set(data.user);
+          connectSocket(data.user);
+        } else {
+          goto('/');
+        }
+      } catch (e) {
+        goto('/');
+      }
+    } else if (!$connected) {
+      connectSocket($user);
+    }
+  });
+
+  function handleCreateRoom() {
+    createRoom(roomName || `${$user?.username}'s Game`, {
+      maxPlayers,
+      allowSpectators: false,
+      fillWithAi,
+      aiDifficulty,
+      isPrivate: false,
+      turnTimeLimit: null
+    });
+    showCreateRoom = false;
+    roomName = '';
+  }
+
+  function handleJoinByCode() {
+    if (joinCode.trim()) {
+      joinRoom(undefined, joinCode.trim().toUpperCase());
+      joinCode = '';
+    }
+  }
+
+  function handleSendChat() {
+    if (chatInput.trim()) {
+      sendLobbyMessage(chatInput.trim());
+      chatInput = '';
+    }
+  }
+
+  function handleLogout() {
+    fetch('/api/auth/logout', { method: 'POST' });
+    // Clear guest user from localStorage
+    localStorage.removeItem('guestUser');
+    disconnectSocket();
+    user.set(null);
+    goto('/');
+  }
+
+  function handlePlayCards(cards: Card[]) {
+    if ($currentRoom) {
+      playCards($currentRoom.id, cards);
+    }
+  }
+
+  function handlePassTurn() {
+    if ($currentRoom) {
+      passTurn($currentRoom.id);
+    }
+  }
+</script>
+
+<svelte:head>
+  <title>Lobby - Big Two</title>
+</svelte:head>
+
+<div class="lobby-container">
+  <header class="lobby-header">
+    <div class="logo">
+      <span>🎴</span>
+      <h1>Big Two</h1>
+    </div>
+    <div class="user-info">
+      <span class="connection-status" class:connected={$connected}>
+        {$connected ? '🟢' : '🔴'}
+      </span>
+      <span class="username">{$user?.username || 'Guest'}</span>
+      {#if $user?.isGuest}
+        <span class="guest-badge">Guest</span>
+      {/if}
+      <button class="btn btn-secondary btn-sm" on:click={handleLogout}>Logout</button>
+    </div>
+  </header>
+
+  <main class="lobby-main">
+    {#if $gameState}
+      <!-- Game View -->
+      <GameView
+        gameState={$gameState}
+        userId={$user?.id || ''}
+        onPlay={handlePlayCards}
+        onPass={handlePassTurn}
+      />
+    {:else if $currentRoom}
+      <!-- Room View -->
+      <div class="room-view">
+        <div class="room-header">
+          <button class="back-btn" on:click={leaveRoom}>← Back to Lobby</button>
+          <h2>{$currentRoom.name}</h2>
+          <div class="room-code">
+            Code: <strong>{$currentRoom.code}</strong>
+          </div>
+        </div>
+
+        <div class="players-grid">
+          {#each $currentRoom.players as player, i}
+            <div class="player-slot" class:ready={player.isReady} class:host={player.isHost}>
+              <div class="player-avatar">
+                {player.isAi ? '🤖' : '👤'}
+              </div>
+              <div class="player-name">
+                {player.name}
+                {#if player.isHost}<span class="host-badge">Host</span>{/if}
+              </div>
+              <div class="player-status">
+                {#if player.isAi}
+                  <span class="ready-text">Ready</span>
+                {:else if player.isReady}
+                  <span class="ready-text">Ready</span>
+                {:else}
+                  <span class="waiting-text">Waiting...</span>
+                {/if}
+              </div>
+            </div>
+          {/each}
+
+          {#each Array($currentRoom.settings.maxPlayers - $currentRoom.players.length) as _, i}
+            <div class="player-slot empty">
+              <div class="player-avatar">❓</div>
+              <div class="player-name">Empty Slot</div>
+              {#if $currentRoom.hostId === $user?.id}
+                <button class="btn btn-secondary btn-sm" on:click={() => addAi($currentRoom?.id || '')}>
+                  + Add AI
+                </button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+
+        <div class="room-actions">
+          {#if $currentRoom.hostId === $user?.id}
+            <button
+              class="btn btn-primary"
+              on:click={() => startGame($currentRoom?.id || '')}
+              disabled={$currentRoom.players.length < 2}
+            >
+              Start Game
+            </button>
+          {:else}
+            <button
+              class="btn btn-success"
+              on:click={() => toggleReady($currentRoom?.id || '', !$currentRoom?.players.find(p => p.id === $user?.id)?.isReady)}
+            >
+              {$currentRoom.players.find(p => p.id === $user?.id)?.isReady ? 'Not Ready' : 'Ready'}
+            </button>
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <!-- Lobby View -->
+      <div class="lobby-content">
+        <div class="rooms-section">
+          <div class="section-header">
+            <h2>🎮 Game Rooms</h2>
+            <button class="btn btn-primary" on:click={() => showCreateRoom = true}>
+              + Create Room
+            </button>
+          </div>
+
+          <div class="join-by-code">
+            <input
+              type="text"
+              bind:value={joinCode}
+              placeholder="Enter room code..."
+              maxlength="6"
+            />
+            <button class="btn btn-secondary" on:click={handleJoinByCode}>Join</button>
+          </div>
+
+          <div class="rooms-list">
+            {#if $lobbyState.rooms.length === 0}
+              <p class="text-muted text-center">No rooms available. Create one!</p>
+            {:else}
+              {#each $lobbyState.rooms as room}
+                <div class="room-card">
+                  <div class="room-info">
+                    <h3>{room.name}</h3>
+                    <p>{room.players.length}/{room.settings.maxPlayers} players</p>
+                  </div>
+                  <button
+                    class="btn btn-secondary"
+                    on:click={() => joinRoom(room.id)}
+                    disabled={room.status !== 'waiting'}
+                  >
+                    {room.status === 'waiting' ? 'Join' : 'In Game'}
+                  </button>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        </div>
+
+        <div class="sidebar">
+          <div class="online-users">
+            <h3>👥 Online ({$lobbyState.users.length})</h3>
+            <ul>
+              {#each $lobbyState.users as onlineUser}
+                <li class:in-game={onlineUser.status === 'in-game'}>
+                  {onlineUser.name}
+                  {#if onlineUser.status === 'in-game'}
+                    <span class="status-badge">In Game</span>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </div>
+
+          <div class="chat-section">
+            <h3>💬 Lobby Chat</h3>
+            <div class="chat-messages">
+              {#each $lobbyMessages as msg}
+                <div class="chat-message" class:system={msg.type === 'system'}>
+                  <span class="chat-sender">{msg.senderName}:</span>
+                  <span class="chat-content">{msg.content}</span>
+                </div>
+              {/each}
+            </div>
+            <form class="chat-input" on:submit|preventDefault={handleSendChat}>
+              <input
+                type="text"
+                bind:value={chatInput}
+                placeholder="Type a message..."
+                maxlength="500"
+              />
+              <button type="submit" class="btn btn-primary btn-sm">Send</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    {/if}
+  </main>
+</div>
+
+{#if showCreateRoom}
+  <div class="modal-overlay" on:click={() => showCreateRoom = false}>
+    <div class="modal" on:click|stopPropagation>
+      <h2>Create Room</h2>
+
+      <div class="form-group">
+        <label>Room Name (optional)</label>
+        <input type="text" bind:value={roomName} placeholder="My Game" />
+      </div>
+
+      <div class="form-group">
+        <label>Max Players</label>
+        <select bind:value={maxPlayers}>
+          <option value={2}>2 Players</option>
+          <option value={3}>3 Players</option>
+          <option value={4}>4 Players</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" bind:checked={fillWithAi} />
+          Fill empty slots with AI
+        </label>
+      </div>
+
+      {#if fillWithAi}
+        <div class="form-group">
+          <label>AI Difficulty</label>
+          <select bind:value={aiDifficulty}>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+      {/if}
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" on:click={() => showCreateRoom = false}>Cancel</button>
+        <button class="btn btn-primary" on:click={handleCreateRoom}>Create</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .lobby-container {
+    min-height: 100vh;
+    background: var(--bg-darker);
+  }
+
+  .lobby-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: var(--bg-dark);
+    border-bottom: 1px solid rgba(212,175,55,0.2);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo span {
+    font-size: 1.8rem;
+  }
+
+  .logo h1 {
+    font-size: 1.5rem;
+    margin: 0;
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .username {
+    color: var(--gold);
+    font-weight: 600;
+  }
+
+  .guest-badge {
+    background: rgba(255,255,255,0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.6);
+  }
+
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+
+  .lobby-main {
+    padding: 24px;
+    height: calc(100vh - 70px); /* Full viewport minus header */
+    overflow: hidden;
+  }
+
+  .lobby-content {
+    display: grid;
+    grid-template-columns: 1fr 350px;
+    gap: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    height: 100%;
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .section-header h2 {
+    margin: 0;
+  }
+
+  .join-by-code {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .join-by-code input {
+    flex: 1;
+    text-transform: uppercase;
+  }
+
+  .rooms-section {
+    overflow-y: auto;
+    height: 100%;
+  }
+
+  .rooms-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .room-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: var(--bg-dark);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .room-card h3 {
+    margin: 0 0 4px;
+    font-size: 1rem;
+    color: white;
+    font-family: inherit;
+  }
+
+  .room-card p {
+    margin: 0;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+    min-height: 0; /* Allow flex children to shrink */
+  }
+
+  .online-users, .chat-section {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .online-users {
+    flex-shrink: 0; /* Don't shrink online users */
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .online-users h3, .chat-section h3 {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    color: var(--gold);
+    font-family: inherit;
+  }
+
+  .online-users ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .online-users li {
+    padding: 6px 0;
+    color: rgba(255,255,255,0.8);
+    font-size: 0.9rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .online-users li.in-game {
+    opacity: 0.5;
+  }
+
+  .status-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+  }
+
+  .chat-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Allow flex to shrink below content size */
+    overflow: hidden;
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+    min-height: 0; /* Enable scrolling within flex */
+  }
+
+  .chat-message {
+    padding: 4px 0;
+  }
+
+  .chat-sender {
+    color: var(--gold);
+    font-weight: 500;
+    margin-right: 6px;
+  }
+
+  .chat-content {
+    color: rgba(255,255,255,0.8);
+  }
+
+  .chat-input {
+    display: flex;
+    gap: 8px;
+  }
+
+  .chat-input input {
+    flex: 1;
+  }
+
+  /* Room View */
+  .room-view {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .room-header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  .room-header h2 {
+    margin: 16px 0 8px;
+  }
+
+  .room-code {
+    color: rgba(255,255,255,0.6);
+  }
+
+  .room-code strong {
+    color: var(--gold);
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+  }
+
+  .back-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.6);
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+
+  .players-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .player-slot {
+    background: var(--bg-dark);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    border: 2px solid rgba(255,255,255,0.1);
+    transition: border-color 0.2s;
+  }
+
+  .player-slot.ready {
+    border-color: #4CAF50;
+  }
+
+  .player-slot.host {
+    border-color: var(--gold);
+  }
+
+  .player-slot.empty {
+    opacity: 0.5;
+  }
+
+  .player-avatar {
+    font-size: 2.5rem;
+    margin-bottom: 8px;
+  }
+
+  .player-name {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .host-badge {
+    background: var(--gold);
+    color: #1a1a1a;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    margin-left: 6px;
+  }
+
+  .ready-text {
+    color: #4CAF50;
+  }
+
+  .waiting-text {
+    color: rgba(255,255,255,0.4);
+  }
+
+  .room-actions {
+    text-align: center;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal {
+    background: var(--bg-dark);
+    border-radius: 16px;
+    padding: 24px;
+    width: 90%;
+    max-width: 400px;
+    border: 1px solid rgba(212,175,55,0.3);
+  }
+
+  .modal h2 {
+    margin: 0 0 20px;
+    text-align: center;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    color: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+  }
+
+  .form-group input[type="text"],
+  .form-group select {
+    width: 100%;
+  }
+
+  .form-group input[type="checkbox"] {
+    margin-right: 8px;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 900px) {
+    .lobby-content {
+      grid-template-columns: 1fr;
+    }
+
+    .players-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
