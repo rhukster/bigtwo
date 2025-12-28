@@ -4,6 +4,8 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
+import Database from 'better-sqlite3';
+import SqliteStore from 'better-sqlite3-session-store';
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -37,6 +39,11 @@ const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 const PORT = parseInt(process.env.PORT || '3001');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
 
+// Initialize SQLite session store
+const SessionStore = SqliteStore(session);
+const sessionDb = new Database(join(__dirname, '../data/sessions.db'));
+sessionDb.pragma('journal_mode = WAL');
+
 // Socket.io setup
 const io = new Server(httpServer, {
   cors: {
@@ -60,6 +67,13 @@ if (isProduction) {
 app.use(express.json());
 app.use(cookieParser());
 app.use(session({
+  store: new SessionStore({
+    client: sessionDb,
+    expired: {
+      clear: true,
+      intervalMs: 900000 // Clean up expired sessions every 15 minutes
+    }
+  }),
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
